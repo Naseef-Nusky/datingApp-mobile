@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+html {
+  height: 100%;
+  height: -webkit-fill-available;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent layout shifts */
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+}
+
+/* Full usable viewport height on iOS WKWebView (100vh ignores dynamic toolbars / overlays) */
+.min-h-app-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-height: calc(var(--vh, 1vh) * 100);
+}
+
+/* iOS WKWebView: smoother scrolling inside modal sheets */
+.ios-login-sheet-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* iOS/Capacitor: fallback so `calc(…*var(--vh))` never becomes invalid on first paint */
+:root {
+  --vh: 1vh;
+}
+
+/* Prevent layout shift when modals open */
+body.modal-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+

@@ -1,0 +1,68 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "back": "Retour",
+    "search": "Rechercher",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "credits": "Crédits",
+    "refill": "Recharger",
+    "upgradeAccount": "AMÉLIORER LE COMPTE",
+    "refillAccount": "RECHARGER LE COMPTE",
+    "viewPayments": "Voir les paiements",
+    "language": "Langue"
+  },
+  "nav": {
+    "search": "RECHERCHER",
+    "inbox": "BOÎTE DE RÉCEPTION",
+    "dashboard": "Tableau de bord",
+    "contacts": "Contacts",
+    "chatRequests": "Demandes de chat",
+    "settings": "Paramètres",
+    "logout": "Déconnexion",
+    "profile": "Profil",
+    "about": "À propos",
+    "privacy": "Confidentialité",
+    "refund": "Remboursement",
+    "safety": "Sécurité",
+    "terms": "Conditions"
+  },
+  "home": {
+    "login": "Connexion",
+    "register": "S'inscrire",
+    "getStarted": "Commencer"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "noProfiles": "Aucun profil à afficher.",
+    "upgradeToSeeMore": "Améliorez pour en voir plus"
+  },
+  "profile": {
+    "back": "RETOUR",
+    "changeSubscription": "CHANGER D'ABONNEMENT",
+    "updateCover": "MODIFIER LA COUVERTURE",
+    "uploadPhoto": "TÉLÉCHARGER UNE PHOTO",
+    "lastActive": "Dernière activité",
+    "aboutMe": "À propos de moi",
+    "interests": "Centres d'intérêt",
+    "lifestyle": "Style de vie",
+    "contact": "Contact",
+    "sendMessage": "Envoyer un message",
+    "report": "Signaler"
+  },
+  "inbox": {
+    "title": "Boîte de réception",
+    "noChats": "Pas encore de conversations.",
+    "startChat": "Démarrez une conversation depuis un profil."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "language": "Langue",
+    "sound": "Son",
+    "notifications": "Notifications",
+    "account": "Compte"
+  }
+}

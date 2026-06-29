@@ -1,0 +1,68 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "back": "Zurück",
+    "search": "Suchen",
+    "online": "Online",
+    "offline": "Offline",
+    "credits": "Credits",
+    "refill": "Aufladen",
+    "upgradeAccount": "KONTO UPGRADEN",
+    "refillAccount": "KONTO AUFLADEN",
+    "viewPayments": "Zahlungen anzeigen",
+    "language": "Sprache"
+  },
+  "nav": {
+    "search": "SUCHEN",
+    "inbox": "POSTEINGANG",
+    "dashboard": "Dashboard",
+    "contacts": "Kontakte",
+    "chatRequests": "Chat-Anfragen",
+    "settings": "Einstellungen",
+    "logout": "Abmelden",
+    "profile": "Profil",
+    "about": "Über uns",
+    "privacy": "Datenschutz",
+    "refund": "Rückerstattung",
+    "safety": "Sicherheit",
+    "terms": "AGB"
+  },
+  "home": {
+    "login": "Anmelden",
+    "register": "Registrieren",
+    "getStarted": "Loslegen"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "noProfiles": "Keine Profile anzuzeigen.",
+    "upgradeToSeeMore": "Upgrade für mehr"
+  },
+  "profile": {
+    "back": "ZURÜCK",
+    "changeSubscription": "ABO ÄNDERN",
+    "updateCover": "COVER AKTUALISIEREN",
+    "uploadPhoto": "FOTO HOCHLADEN",
+    "lastActive": "Zuletzt aktiv",
+    "aboutMe": "Über mich",
+    "interests": "Interessen",
+    "lifestyle": "Lifestyle",
+    "contact": "Kontakt",
+    "sendMessage": "Nachricht senden",
+    "report": "Melden"
+  },
+  "inbox": {
+    "title": "Posteingang",
+    "noChats": "Noch keine Unterhaltungen.",
+    "startChat": "Starte eine Unterhaltung von einem Profil."
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "language": "Sprache",
+    "sound": "Sound",
+    "notifications": "Benachrichtigungen",
+    "account": "Konto"
+  }
+}

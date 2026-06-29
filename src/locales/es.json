@@ -1,0 +1,68 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "back": "Atrás",
+    "search": "Buscar",
+    "online": "En línea",
+    "offline": "Desconectado",
+    "credits": "Créditos",
+    "refill": "Recargar",
+    "upgradeAccount": "MEJORAR CUENTA",
+    "refillAccount": "RECARGAR CUENTA",
+    "viewPayments": "Ver pagos",
+    "language": "Idioma"
+  },
+  "nav": {
+    "search": "BUSCAR",
+    "inbox": "BANDEJA",
+    "dashboard": "Panel",
+    "contacts": "Contactos",
+    "chatRequests": "Solicitudes de chat",
+    "settings": "Ajustes",
+    "logout": "Cerrar sesión",
+    "profile": "Perfil",
+    "about": "Acerca de",
+    "privacy": "Privacidad",
+    "refund": "Reembolso",
+    "safety": "Seguridad",
+    "terms": "Términos"
+  },
+  "home": {
+    "login": "Iniciar sesión",
+    "register": "Registrarse",
+    "getStarted": "Comenzar"
+  },
+  "dashboard": {
+    "title": "Panel",
+    "noProfiles": "No hay perfiles para mostrar.",
+    "upgradeToSeeMore": "Mejora para ver más"
+  },
+  "profile": {
+    "back": "ATRÁS",
+    "changeSubscription": "CAMBIAR PLAN",
+    "updateCover": "ACTUALIZAR PORTADA",
+    "uploadPhoto": "SUBIR FOTO",
+    "lastActive": "Última actividad",
+    "aboutMe": "Sobre mí",
+    "interests": "Intereses",
+    "lifestyle": "Estilo de vida",
+    "contact": "Contacto",
+    "sendMessage": "Enviar mensaje",
+    "report": "Reportar"
+  },
+  "inbox": {
+    "title": "Bandeja",
+    "noChats": "Aún no hay conversaciones.",
+    "startChat": "Inicia una conversación desde un perfil."
+  },
+  "settings": {
+    "title": "Ajustes",
+    "language": "Idioma",
+    "sound": "Sonido",
+    "notifications": "Notificaciones",
+    "account": "Cuenta"
+  }
+}
