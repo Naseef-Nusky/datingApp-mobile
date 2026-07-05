@@ -17,6 +17,27 @@ export default function GoogleCallback() {
   const token = searchParams.get('token');
   const email = searchParams.get('email');
   const loginLinkSent = searchParams.get('login_link_sent') === '1';
+  const oauthError = searchParams.get('error');
+
+  if (oauthError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-100">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Sign-in failed</h1>
+          <p className="text-gray-600 text-sm mb-6">{decodeURIComponent(oauthError)}</p>
+          <a
+            href="/"
+            className="inline-block py-3 px-6 rounded-xl font-semibold text-white"
+            style={{
+              background: 'linear-gradient(to right, #5A2D8A, #B5458F, #E97672)',
+            }}
+          >
+            Back to home
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   // Case: backend sent login link (no token) — show "check your email"
   if (!token && email && loginLinkSent) {

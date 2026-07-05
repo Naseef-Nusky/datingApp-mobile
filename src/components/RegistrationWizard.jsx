@@ -503,8 +503,14 @@ const RegistrationWizard = ({
       }
     } catch (err) {
       console.error('Registration submit error:', err);
+      const data = err.response?.data;
+      const firstValidation =
+        Array.isArray(data?.errors) && data.errors.length > 0
+          ? data.errors[0].msg || data.errors[0].message
+          : null;
       setError(
-        err.response?.data?.message ||
+        data?.message ||
+          firstValidation ||
           err.message ||
           (completeProfileOnly ? 'Failed to save profile' : 'Registration failed')
       );

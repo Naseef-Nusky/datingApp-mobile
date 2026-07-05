@@ -15,6 +15,7 @@
       "localhost",
       "127.0.0.1",
       "api.vantagedating.com",
+      "api.mobile.vantagedating.com",
       "*.vantagedating.com"
     ]
   },

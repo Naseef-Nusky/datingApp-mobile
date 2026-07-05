@@ -83,6 +83,7 @@ export function handleAppDeepLink(url) {
   }
 
   if (lower.includes('google-callback')) {
+    void closeStripeBrowserWithRetry();
     window.location.replace(`/auth/google-callback${query}`);
     return;
   }

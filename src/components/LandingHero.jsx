@@ -10,7 +10,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { buildSendLoginLinkPayload } from '../utils/sendLoginLinkPayload';
 import { getCheckInboxButtonLabel, openEmailInbox } from '../utils/emailInbox';
 import { authorizeAppleSignIn } from '../utils/nativeAppleSignIn';
-import { mobileApiUrl } from '../api/mobileApi';
+import { openGoogleSignIn } from '../utils/googleSignIn';
 
 const isIosNativeShell = () =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
@@ -583,9 +583,10 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
             >
               {t('landing.takeAChance')}
             </Link>
-            <a
-              href={mobileApiUrl('/api/auth/google')}
-              className="flex items-center justify-center gap-3 w-full bg-white border border-gray-200 text-gray-800 text-base font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition no-underline"
+            <button
+              type="button"
+              onClick={() => openGoogleSignIn()}
+              className="flex items-center justify-center gap-3 w-full bg-white border border-gray-200 text-gray-800 text-base font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition"
             >
               <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -594,7 +595,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
               </svg>
               {t('landing.signInWithGoogle')}
-            </a>
+            </button>
             {iosApp && (
               <button
                 type="button"
@@ -1033,9 +1034,10 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
           >
             Give it a try!
           </Link>
-          <a
-            href={mobileApiUrl('/api/auth/google')}
-            className="flex items-center justify-center gap-3 w-full bg-white border border-gray-200 text-gray-800 text-base font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition no-underline shadow"
+          <button
+            type="button"
+            onClick={() => openGoogleSignIn()}
+            className="flex items-center justify-center gap-3 w-full bg-white border border-gray-200 text-gray-800 text-base font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition shadow"
           >
             <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -1044,7 +1046,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
             </svg>
             Sign in with Google
-          </a>
+          </button>
           {iosApp && (
             <button
               type="button"

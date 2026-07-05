@@ -209,9 +209,14 @@ export const AuthProvider = ({ children }) => {
       
       return { success: true };
     } catch (error) {
+      const data = error.response?.data;
+      const firstValidation =
+        Array.isArray(data?.errors) && data.errors.length > 0
+          ? data.errors[0].msg || data.errors[0].message
+          : null;
       return {
         success: false,
-        message: error.response?.data?.message || 'Registration failed',
+        message: data?.message || firstValidation || 'Registration failed',
       };
     }
   };

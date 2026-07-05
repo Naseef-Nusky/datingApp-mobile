@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import Logo from './Logo';
-import { mobileApiUrl } from '../api/mobileApi';
+import { openGoogleSignIn } from '../utils/googleSignIn';
 
 /**
  * Welcome/signup card with Vantage Dating logo and logo theme (purple–magenta–coral).
@@ -38,9 +38,10 @@ export default function WelcomeAuthCard() {
           </Link>
 
           {/* Sign in with Google */}
-          <a
-            href={mobileApiUrl('/api/auth/google')}
-            className="flex items-center justify-center gap-3 w-full bg-white border border-gray-300 text-gray-800 font-medium py-3.5 px-6 rounded-lg hover:bg-gray-50 transition no-underline"
+          <button
+            type="button"
+            onClick={() => openGoogleSignIn()}
+            className="flex items-center justify-center gap-3 w-full bg-white border border-gray-300 text-gray-800 font-medium py-3.5 px-6 rounded-lg hover:bg-gray-50 transition"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -61,7 +62,7 @@ export default function WelcomeAuthCard() {
               />
             </svg>
             Sign in with Google
-          </a>
+          </button>
         </div>
 
         {/* Legal disclaimer */}
