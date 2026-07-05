@@ -9,14 +9,40 @@ import './index.css';
 import { initMagicLinkDeepLinks } from './utils/magicLinkDeepLink.js';
 import { initGoogleAnalytics } from './utils/analytics.js';
 import { injectJsonLdWebsite } from './utils/seo.js';
+import { toMobileApiUrl } from './api/mobileApi.js';
+import { processApiCreditsPayload } from './utils/creditSync.js';
+import { isCreditsAccessDenied, wasCreditsAccessHandled } from './utils/creditsAccess.js';
 
-// Baked in at build time from frontend/.env.production (VITE_API_URL). Without it on app.*, /api hits the app nginx (often 1MB default → 413 on uploads).
+// Baked in at build time from .env.production (VITE_API_URL).
 const raw = import.meta.env.VITE_API_URL || '';
 axios.defaults.baseURL = raw.replace(/\/$/, '');
 
+// All /api/* requests → /api/mobile/* (mobile-only backend routes)
+axios.interceptors.request.use((config) => {
+  if (config.url) {
+    config.url = toMobileApiUrl(config.url);
+  }
+  return config;
+});
+
 axios.interceptors.response.use(
-  (r) => r,
+  (response) => {
+    if (response?.data) {
+      processApiCreditsPayload(response.data);
+    }
+    return response;
+  },
   (err) => {
+    const status = err.response?.status;
+    const payload = err.response?.data;
+    if (
+      !wasCreditsAccessHandled(err) &&
+      isCreditsAccessDenied(payload, status)
+    ) {
+      window.dispatchEvent(
+        new CustomEvent('credits-access-denied', { detail: payload }),
+      );
+    }
     if (err.response?.status === 503 && err.response?.data?.code === 'MAINTENANCE') {
       const d = err.response.data || {};
       window.dispatchEvent(
@@ -50,7 +76,8 @@ injectJsonLdWebsite();
 
 // Native iOS/Android shell (Capacitor)
 if (Capacitor.isNativePlatform()) {
-  console.info('[Vantage Dating] API base URL:', axios.defaults.baseURL || '(empty — set VITE_API_URL, then npm run cap:sync)');
+  console.info('[Vantage Dating Mobile] API base URL:', axios.defaults.baseURL || '(empty)');
+  console.info('[Vantage Dating Mobile] API prefix: /api/mobile');
   void initMagicLinkDeepLinks();
   if (Capacitor.getPlatform() === 'ios') {
     StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});

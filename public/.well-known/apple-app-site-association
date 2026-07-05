@@ -1,0 +1,26 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "M8QMLSXSHV.com.vantagedating.app",
+        "paths": [
+          "/auth/login-callback",
+          "/auth/login-callback/*",
+          "/auth/google-callback",
+          "/auth/google-callback/*",
+          "/register",
+          "/login",
+          "/signup-email",
+          "/complete-profile",
+          "/dashboard",
+          "/dashboard/*",
+          "/profile/*",
+          "/profile/me",
+          "/stripe-return",
+          "/stripe-return/*"
+        ]
+      }
+    ]
+  }
+}

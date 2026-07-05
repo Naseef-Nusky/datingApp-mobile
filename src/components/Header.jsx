@@ -23,6 +23,7 @@ import HelpCenterModal from './HelpCenterModal';
 import { useUpgradeModal } from '../context/UpgradeModalContext';
 import { useLanguage } from '../context/LanguageContext';
 import { hasActiveSubscription } from '../utils/subscription';
+import useCreditBalance from '../hooks/useCreditBalance';
 import {
   mapChatRequestFromApi,
   enrichChatRequestsWithProfiles,
@@ -32,6 +33,7 @@ import { isRegistrationRoute } from '../utils/routePaths';
 
 const Header = () => {
   const { user } = useAuth();
+  const { credits: liveCredits } = useCreditBalance({ refreshOnMount: true });
   const { openRefillModal } = useRefillModal();
   const { openUpgradeModal } = useUpgradeModal();
   const { t, translatePageNow } = useLanguage();
@@ -545,10 +547,13 @@ const Header = () => {
                   <button
                     type="button"
                     onClick={handleRefillOrUpgrade}
-                    className="text-white hover:text-nex-orange transition p-1.5 sm:p-2"
+                    className="relative flex items-center gap-1 text-white hover:text-nex-orange transition p-1.5 sm:p-2"
                     title={hasActiveSubscription(user) ? t('common.refillAccount') : t('common.upgradeAccount')}
                   >
-                    <FaCoins className="text-lg sm:text-xl" />
+                    <FaCoins className="text-lg sm:text-xl shrink-0" />
+                    <span className="text-xs sm:text-sm font-semibold tabular-nums min-w-[1.25rem] text-center">
+                      {liveCredits}
+                    </span>
                   </button>
                 )}
 

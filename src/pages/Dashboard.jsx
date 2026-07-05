@@ -10,6 +10,7 @@ import {
 import { FaHeart, FaCamera, FaEnvelope, FaVideo, FaGift, FaSearch, FaVolumeUp, FaChevronDown, FaFire, FaCheckCircle, FaPlay, FaPhone, FaTimes, FaComment } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useServiceAccess } from '../hooks/useServiceAccess';
 import MingleIntroModal from '../components/MingleIntroModal';
 import LetsMingleModal from '../components/LetsMingleModal';
 import MingleSuccessModal from '../components/MingleSuccessModal';
@@ -19,13 +20,17 @@ import FreeUserBadge from '../components/FreeUserBadge';
 import VerifiedBadge from '../components/VerifiedBadge';
 import { appendBrowseGenderQuery } from '../utils/browseGenderFilter';
 import StreamerMemberFilter from '../components/StreamerMemberFilter';
+import { CompatibilityBadge } from '../mobile/components/CompatibilityPanel';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, fetchUser } = useAuth();
+  const { user } = useAuth();
   const { t } = useLanguage();
+  const { ensureCanSendMingle } = useServiceAccess();
   const [profiles, setProfiles] = useState([]);
+  const [compatibilityScores, setCompatibilityScores] = useState({});
+  const [compatibilityLoading, setCompatibilityLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
   const [chatRequests, setChatRequests] = useState([]);
@@ -35,7 +40,6 @@ const Dashboard = () => {
   const [streamerUserFilter, setStreamerUserFilter] = useState('all');
   const [streamerNameSearch, setStreamerNameSearch] = useState('');
   const socketRef = useRef(null);
-  const paymentSuccessHandledRef = useRef(null); // Prevent duplicate success alert (e.g. Strict Mode double-mount)
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -67,49 +71,7 @@ const Dashboard = () => {
   const [showMingleSuccess, setShowMingleSuccess] = useState(false);
   const [mingleMatchedProfiles, setMingleMatchedProfiles] = useState([]);
 
-  // After Stripe checkout success: confirm payment with backend (uses secret key only), then refresh user. Run once per session_id.
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const sessionId = params.get('session_id');
-    const apiUrl = import.meta.env.VITE_API_URL || '';
-    const upgradeSuccess = params.get('upgrade') === 'success';
-    const refillSuccess = params.get('refill') === 'success';
-
-    if (upgradeSuccess && sessionId) {
-      const key = `upgrade-${sessionId}`;
-      if (paymentSuccessHandledRef.current === key) return;
-      paymentSuccessHandledRef.current = key;
-      window.history.replaceState({}, '', location.pathname);
-      axios.post(`${apiUrl}/api/credits/confirm-payment`, { session_id: sessionId })
-        .then(() => {
-          fetchUser();
-          alert(t('dashboard.paymentSuccess'));
-        })
-        .catch((err) => {
-          paymentSuccessHandledRef.current = null;
-          const msg = err.response?.data?.message || 'Could not confirm payment. Credits may still be applied.';
-          alert(msg);
-        });
-      return;
-    }
-    if (refillSuccess && sessionId) {
-      const key = `refill-${sessionId}`;
-      if (paymentSuccessHandledRef.current === key) return;
-      paymentSuccessHandledRef.current = key;
-      window.history.replaceState({}, '', location.pathname);
-      axios.post(`${apiUrl}/api/credits/confirm-refill-payment`, { session_id: sessionId })
-        .then((res) => {
-          fetchUser();
-          const added = res.data?.creditsAdded ?? '';
-          alert(added ? t('dashboard.paymentCreditsAddedWithNumber').replace('{{count}}', added) : t('dashboard.paymentCreditsAdded'));
-        })
-        .catch((err) => {
-          paymentSuccessHandledRef.current = null;
-          const msg = err.response?.data?.message || 'Could not confirm refill payment. Credits may still be applied.';
-          alert(msg);
-        });
-    }
-  }, [location.search, location.pathname, fetchUser]);
+  // Stripe payment return is handled globally in useStripePaymentReturn (MobileAppShell).
 
   // Socket.IO setup for real-time call notifications
   useEffect(() => {
@@ -232,6 +194,55 @@ const Dashboard = () => {
     if (!user) return;
     fetchProfiles();
   }, [user, filters]);
+
+  useEffect(() => {
+    if (!user?.id || profiles.length === 0) {
+      setCompatibilityScores({});
+      setCompatibilityLoading(false);
+      return;
+    }
+
+    const userIds = profiles
+      .map((p) => p.userId || p.id)
+      .filter((id) => id && String(id) !== String(user.id));
+
+    if (userIds.length === 0) {
+      setCompatibilityScores({});
+      setCompatibilityLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadScores = async () => {
+      setCompatibilityLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+
+        const merged = {};
+        const chunkSize = 100;
+        for (let i = 0; i < userIds.length; i += chunkSize) {
+          if (cancelled) break;
+          const chunk = userIds.slice(i, i + chunkSize);
+          const response = await axios.post('/api/compatibility/batch', { userIds: chunk });
+          Object.assign(merged, response.data?.scores || {});
+        }
+        if (!cancelled) setCompatibilityScores(merged);
+      } catch (err) {
+        console.error('Fetch compatibility scores error:', err.response?.data || err.message);
+        if (!cancelled) setCompatibilityScores({});
+      } finally {
+        if (!cancelled) setCompatibilityLoading(false);
+      }
+    };
+
+    loadScores();
+    return () => {
+      cancelled = true;
+    };
+  }, [profiles, user?.id]);
 
   useEffect(() => {
     const isSt = user?.userType === 'streamer' || user?.userType === 'talent';
@@ -612,6 +623,12 @@ const Dashboard = () => {
   const isStreamerTalent =
     user?.userType === 'streamer' || user?.userType === 'talent';
 
+  const getProfileCompatibility = (profile) => {
+    const id = String(profile.userId || profile.id || '');
+    if (!id) return null;
+    return compatibilityScores[id] ?? null;
+  };
+
   const profileMatchesNameSearch = (profile, query) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase().trim();
@@ -650,7 +667,8 @@ const Dashboard = () => {
       <MingleIntroModal
         isOpen={showMingleIntro}
         onClose={() => setShowMingleIntro(false)}
-        onGetStarted={() => {
+        onGetStarted={async () => {
+          if (!(await ensureCanSendMingle())) return;
           setShowMingleIntro(false);
           setShowMingleModal(true);
         }}
@@ -738,6 +756,8 @@ const Dashboard = () => {
                       : profile.photos[0]?.url || '')
                   : null;
 
+              const compat = getProfileCompatibility(profile);
+
               return (
                 <div
                   key={profile.id || profile.userId}
@@ -755,6 +775,22 @@ const Dashboard = () => {
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <FaHeart className="text-3xl sm:text-4xl lg:text-5xl text-gray-400" />
+                      </div>
+                    )}
+
+                    {/* Bottom-right: ❤️ compatibility % on photo */}
+                    {(compat?.score != null || compatibilityLoading) && (
+                      <div
+                        className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 z-[25]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {compat?.score != null ? (
+                          <CompatibilityBadge score={compat.score} variant="card" />
+                        ) : (
+                          <span className="inline-flex items-center rounded-lg bg-black/60 text-white px-1.5 py-0.5 text-[11px] font-bold shadow-lg animate-pulse">
+                            ❤️ …
+                          </span>
+                        )}
                       </div>
                     )}
 

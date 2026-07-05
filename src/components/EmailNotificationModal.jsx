@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaTimes, FaEnvelope, FaCamera, FaReply } from 'react-icons/fa';
+import { FaTimes, FaEnvelope, FaCamera } from 'react-icons/fa';
 import axios from 'axios';
+import {
+  EMAIL_COMPOSER_MODAL_OVERLAY,
+  EMAIL_DETAIL_MODAL_PANEL,
+  EMAIL_DETAIL_HEADER,
+  EMAIL_DETAIL_SCROLL,
+  EMAIL_DETAIL_CONTENT,
+  EMAIL_DETAIL_REPLY_FOOTER,
+  EMAIL_COMPOSER_SEND_BTN,
+  EMAIL_COMPOSER_AVATAR,
+  EMAIL_COMPOSER_AVATAR_FALLBACK,
+} from '../utils/emailComposerLayout';
 
 const EmailNotificationModal = ({ email, onClose, onReply }) => {
   const navigate = useNavigate();
@@ -24,8 +35,8 @@ const EmailNotificationModal = ({ email, onClose, onReply }) => {
 
   if (!emailData) return null;
 
-  const senderName = emailData.senderData?.profile?.firstName || 
-                     emailData.senderData?.email?.split('@')[0] || 
+  const senderName = emailData.senderData?.profile?.firstName ||
+                     emailData.senderData?.email?.split('@')[0] ||
                      'Someone';
   const senderImage = emailData.senderData?.profile?.profileImage;
   const senderAge = emailData.senderData?.profile?.age;
@@ -34,8 +45,8 @@ const EmailNotificationModal = ({ email, onClose, onReply }) => {
     if (onReply) {
       onReply(emailData);
     } else {
-      const receiverId = emailData.sender === emailData.receiver ? 
-                        emailData.sender : 
+      const receiverId = emailData.sender === emailData.receiver ?
+                        emailData.sender :
                         emailData.sender;
       navigate(`/compose-email?to=${receiverId}&replyTo=${emailData.id}`);
     }
@@ -48,103 +59,80 @@ const EmailNotificationModal = ({ email, onClose, onReply }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[calc(90*var(--vh))] overflow-y-auto">
-        {/* Header with background image */}
-        <div className="relative h-48 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 rounded-t-lg overflow-hidden">
-          <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-          <div className="relative h-full flex flex-col items-center justify-center p-6">
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 text-white hover:text-gray-200 transition-colors bg-black bg-opacity-30 rounded-full p-2"
-            >
-              <FaTimes className="text-xl" />
-            </button>
-            
-            {/* Profile Picture */}
-            <div className="mb-4">
-              {senderImage ? (
-                <img
-                  src={senderImage}
-                  alt={senderName}
-                  className="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover"
-                />
-              ) : (
-                <div className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-white flex items-center justify-center">
-                  <span className="text-4xl font-bold text-purple-600">
-                    {senderName.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-            </div>
-            
-            {/* Email from text */}
-            <h2 className="text-white text-xl font-semibold drop-shadow-lg">
+    <div className={EMAIL_COMPOSER_MODAL_OVERLAY} onClick={onClose} role="dialog" aria-modal="true">
+      <div className={EMAIL_DETAIL_MODAL_PANEL} onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] right-3 z-20 text-white hover:text-gray-200 bg-black/30 rounded-full p-2"
+          aria-label="Close"
+        >
+          <FaTimes className="text-lg" />
+        </button>
+
+        <div className={`${EMAIL_DETAIL_HEADER} bg-gradient-to-br from-orange-400 via-red-500 to-pink-500`}>
+          <div className="absolute inset-0 bg-black/20" />
+          <div className="relative z-10 flex flex-col items-center justify-center h-full px-3 py-2">
+            {senderImage ? (
+              <img src={senderImage} alt={senderName} className={`${EMAIL_COMPOSER_AVATAR} mb-2 border-white`} />
+            ) : (
+              <div className={`${EMAIL_COMPOSER_AVATAR_FALLBACK} mb-2 bg-white/90`}>
+                <span className="text-purple-600 font-bold text-lg">
+                  {senderName.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <h2 className="text-white text-sm sm:text-lg font-semibold drop-shadow-lg px-8 text-center">
               Email from {senderName}
             </h2>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6">
-          {/* Greeting */}
-          <p className="text-lg text-gray-800 mb-4">
-            {emailData.content?.split('\n')[0] || 'Hi, I wanted to reach out to you...'}
-          </p>
+        <div className={EMAIL_DETAIL_SCROLL}>
+          <div className={EMAIL_DETAIL_CONTENT}>
+            <p className="text-base text-gray-800 mb-4">
+              {emailData.content?.split('\n')[0] || 'Hi, I wanted to reach out to you...'}
+            </p>
 
-          {/* Media placeholder if exists */}
-          {emailData.mediaUrl && (
-            <div className="mb-4 relative">
-              <div className="w-full h-64 bg-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
-                {emailData.mediaUrl.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                  <img
-                    src={emailData.mediaUrl}
-                    alt="Email attachment"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="text-center">
-                    <FaCamera className="text-4xl text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-500">Media attachment</p>
-                  </div>
-                )}
+            {emailData.mediaUrl && (
+              <div className="mb-4">
+                <div className="w-full h-48 sm:h-64 bg-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+                  {emailData.mediaUrl.match(/\.(jpg|jpeg|png|gif)$/i) ? (
+                    <img src={emailData.mediaUrl} alt="Email attachment" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-center">
+                      <FaCamera className="text-4xl text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">Media attachment</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Message content */}
-          <div className="prose max-w-none mb-6">
-            <div
-              className="text-gray-700 whitespace-pre-wrap"
-              dangerouslySetInnerHTML={{ 
-                __html: emailData.content?.replace(/\n/g, '<br>') || '' 
-              }}
-            />
+            <div className="text-gray-700 whitespace-pre-wrap text-base mb-4">
+              {emailData.content || ''}
+            </div>
+
+            <div className="text-sm text-gray-500 text-center pb-2">
+              <p>This email was sent from Vantage Dating</p>
+              <p className="mt-1">
+                {senderName}{senderAge ? `, ${senderAge}` : ''} • {new Date(emailData.createdAt).toLocaleDateString()}
+              </p>
+            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-4 mt-6">
-            <button
-              onClick={handleReply}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              <FaEnvelope />
+          <div className={`${EMAIL_DETAIL_REPLY_FOOTER} flex flex-col sm:flex-row gap-3`}>
+            <button type="button" onClick={handleReply} className={EMAIL_COMPOSER_SEND_BTN}>
+              <FaEnvelope className="shrink-0" />
               REPLY
             </button>
             <button
+              type="button"
               onClick={handleViewInInbox}
-              className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-colors"
+              className="w-full sm:flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-colors text-sm sm:text-base"
             >
               View in Inbox
             </button>
-          </div>
-
-          {/* Footer info */}
-          <div className="mt-6 pt-6 border-t border-gray-200 text-sm text-gray-500 text-center">
-            <p>This email was sent from Vantage Dating</p>
-            <p className="mt-1">
-              {senderName}{senderAge ? `, ${senderAge}` : ''} • {new Date(emailData.createdAt).toLocaleDateString()}
-            </p>
           </div>
         </div>
       </div>

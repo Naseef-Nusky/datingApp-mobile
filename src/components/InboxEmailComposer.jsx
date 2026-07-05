@@ -1,13 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
-import { FaEnvelope, FaSmile, FaCamera, FaVideo, FaPaperPlane, FaTimes, FaEllipsisV } from 'react-icons/fa';
+import { FaEnvelope, FaSmile, FaCamera, FaTimes, FaEllipsisV } from 'react-icons/fa';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
+import { useCreditsSync } from '../hooks/useCreditsSync';
+import { useServiceAccess } from '../hooks/useServiceAccess';
+import AutoResizeTextarea from './AutoResizeTextarea';
+import {
+  EMAIL_COMPOSER_MODAL_OVERLAY,
+  EMAIL_COMPOSER_MODAL_PANEL,
+  EMAIL_COMPOSER_HEADER,
+  EMAIL_COMPOSER_BODY_WRAP,
+  EMAIL_COMPOSER_SCROLL,
+  EMAIL_COMPOSER_FOOTER,
+  EMAIL_COMPOSER_SEND_BTN,
+  EMAIL_COMPOSER_INPUT,
+  EMAIL_COMPOSER_TEXTAREA,
+  EMAIL_COMPOSER_TOOLBAR,
+  EMAIL_COMPOSER_TOOLBAR_BTN,
+  EMAIL_COMPOSER_GIFTS_ROW,
+  EMAIL_COMPOSER_AVATAR,
+  EMAIL_COMPOSER_AVATAR_FALLBACK,
+  EMAIL_COMPOSER_TITLE,
+} from '../utils/emailComposerLayout';
 
 const VIDEO_THUMBNAIL_URL = 'https://nexdatingmedia.lon1.digitaloceanspaces.com/Icons/video_thumbnail.png';
 
 const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
-  const { fetchUser } = useAuth();
+  const { syncCreditsAfterAction } = useCreditsSync();
+  const { ensureCanSendEmailAccess, ensureCanAffordCredits } = useServiceAccess();
   const { handleInsufficientCreditsError } = useInsufficientCreditsHandler();
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -89,10 +109,19 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
       setSending(true);
       const receiverId = getReceiverId();
 
+      if (!(await ensureCanSendEmailAccess())) {
+        setSending(false);
+        return;
+      }
+
       for (const gift of selectedGifts) {
         try {
-          await axios.post('/api/gifts/send', { receiverId, giftId: gift.id });
-          if (fetchUser) fetchUser();
+          if (!(await ensureCanAffordCredits(gift?.creditCost))) {
+            setSending(false);
+            return;
+          }
+          const giftRes = await axios.post('/api/gifts/send', { receiverId, giftId: gift.id });
+          await syncCreditsAfterAction(giftRes.data);
         } catch (giftErr) {
           const data = giftErr.response?.data;
           const msg = data?.message || 'Failed to send gift';
@@ -126,13 +155,13 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
 
       formData.append('frontendUrl', window.location.origin);
 
-      await axios.post('/api/messages/send-email', formData, {
+      const emailRes = await axios.post('/api/messages/send-email', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      if (fetchUser) fetchUser();
+      await syncCreditsAfterAction(emailRes.data);
       alert('Email sent successfully!');
       setSubject('');
       setMessage('');
@@ -225,88 +254,91 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pt-[env(safe-area-inset-top,0px)]"
+      className={EMAIL_COMPOSER_MODAL_OVERLAY}
       onClick={onClose}
-      style={{
-        background: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(4px)',
-      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="inbox-email-composer-title"
     >
       <div
-        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-3xl w-full h-[100dvh] sm:h-auto sm:max-h-[min(90dvh,calc(90*var(--vh,1vh)))] flex flex-col overflow-hidden relative min-h-0 pb-[env(safe-area-inset-bottom,0px)]"
+        className={EMAIL_COMPOSER_MODAL_PANEL}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 50%, #fafafa 100%)',
         }}
       >
-        {/* Header with recipient profile - centered like reference */}
-        <div className="relative flex-shrink-0 p-4 sm:p-6 pt-5 sm:pt-8 pb-4 sm:pb-8 border-b border-gray-200 flex flex-col items-center justify-center text-center">
-          {/* Options and Close - top right */}
-          <div className="absolute top-3 right-3 flex items-center gap-2">
+        <div className={EMAIL_COMPOSER_HEADER}>
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1 sm:gap-2">
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setShowOptions(!showOptions)}
                 className="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-white/50 transition"
+                aria-label="More options"
               >
                 <FaEllipsisV />
               </button>
               {showOptions && (
-                <div className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[180px] z-10">
-                  <button className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm text-gray-700">
+                <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[180px] z-10">
+                  <button type="button" className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm text-gray-700">
                     Block User
                   </button>
-                  <button className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm text-gray-700">
+                  <button type="button" className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm text-gray-700">
                     Report a Violation
                   </button>
-                  <button className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm text-gray-700">
+                  <button type="button" className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm text-gray-700">
                     Disable Sound
                   </button>
                 </div>
               )}
             </div>
             <button
+              type="button"
               onClick={onClose}
               className="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-white/50 transition"
+              aria-label="Close"
             >
               <FaTimes />
             </button>
           </div>
-          {/* Centered profile picture */}
           {senderImage ? (
             <img
               src={senderImage}
               alt={senderName}
-              className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg mb-3"
+              className={`${EMAIL_COMPOSER_AVATAR} mb-2 sm:mb-3`}
             />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-pink-200 to-purple-200 flex items-center justify-center border-4 border-white shadow-lg mb-3">
-              <span className="text-white font-semibold text-2xl">
+            <div className={`${EMAIL_COMPOSER_AVATAR_FALLBACK} mb-2 sm:mb-3`}>
+              <span className="text-white font-semibold text-lg sm:text-2xl">
                 {senderName.charAt(0).toUpperCase()}
               </span>
             </div>
           )}
-          {/* Centered "My Email to ..." */}
-          <h2 className="text-lg sm:text-xl font-bold text-gray-900 px-2 break-words">
+          <h2 id="inbox-email-composer-title" className={EMAIL_COMPOSER_TITLE}>
             My Email to {senderName}
           </h2>
         </div>
 
-        {/* Email Composition Area - scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6">
-            {/* Photo/Video & Smiles */}
-            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4 text-xs text-gray-600 mb-4">
-              <button 
+        <div className={EMAIL_COMPOSER_BODY_WRAP}>
+          <div className={EMAIL_COMPOSER_SCROLL}>
+            <div className={`${EMAIL_COMPOSER_TOOLBAR} justify-end`}>
+              <button
+                type="button"
                 onClick={handlePhotoVideoClick}
-                className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                className={`${EMAIL_COMPOSER_TOOLBAR_BTN} hover:bg-white/80`}
               >
-                <FaCamera className="text-sm" />
-                <span>Photo/Video</span>
+                <FaCamera className="text-sm shrink-0" />
+                <span className="whitespace-nowrap">
+                  <span className="sm:hidden">Media</span>
+                  <span className="hidden sm:inline">Photo/Video</span>
+                </span>
               </button>
-              <button 
+              <button
+                type="button"
                 onClick={handleSmilesClick}
-                className="flex items-center gap-1 hover:text-gray-900 transition-colors"
+                className={`${EMAIL_COMPOSER_TOOLBAR_BTN} hover:bg-white/80`}
               >
-                <FaSmile className="text-sm" />
+                <FaSmile className="text-sm shrink-0" />
                 <span>Smiles</span>
               </button>
             </div>
@@ -318,13 +350,12 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
               onChange={handleFileChange}
               className="hidden"
             />
-            {/* Subject Field */}
             <input
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Subject..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              className={`${EMAIL_COMPOSER_INPUT} mb-3 sm:mb-4 focus:ring-blue-500`}
             />
 
             {/* Selected gifts – multiple compact previews with X to remove each */}
@@ -357,12 +388,13 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
             )}
 
             {/* Message Field */}
-            <textarea
+            <AutoResizeTextarea
+              minRows={3}
+              maxRows={12}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type your message..."
-              rows={6}
-              className="w-full min-w-0 px-3 sm:px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white text-base"
+              className={`${EMAIL_COMPOSER_TEXTAREA} mb-4 focus:ring-blue-500`}
             />
 
             {/* Thumbnails for all selected attachments (each can be removed) */}
@@ -406,7 +438,7 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
             {/* Emoji Picker */}
             {showEmojiPicker && (
               <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-8 gap-2">
+                <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
                   {commonEmojis.map((emoji, index) => (
                     <button
                       key={index}
@@ -421,14 +453,14 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
               </div>
             )}
 
-            {/* Virtual gifts – horizontal row like stickers */}
-            <div className="mb-4">
+            {/* Virtual gifts – horizontal scroll */}
+            <div className="mb-2 sm:mb-4">
               {loadingGifts ? (
                 <div className="text-sm text-gray-500 py-2">Loading gifts...</div>
               ) : catalogGifts.length === 0 ? (
                 <div className="text-sm text-gray-500 py-2">No gifts available.</div>
               ) : (
-                <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                <div className={EMAIL_COMPOSER_GIFTS_ROW}>
                   {catalogGifts.map((g) => {
                     const cost = g.creditCost ?? 0;
                     const isFree = cost === 0;
@@ -438,14 +470,14 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
                         key={g.id}
                         type="button"
                         onClick={() => addGiftToEmail(g)}
-                        className={`group flex-shrink-0 flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-200 relative min-w-[72px] cursor-pointer hover:scale-110 hover:shadow-lg ${
+                        className={`group flex-shrink-0 snap-start flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-200 relative min-w-[64px] sm:min-w-[72px] cursor-pointer hover:scale-105 hover:shadow-lg ${
                           isSelected ? 'bg-pink-50 shadow-md' : 'bg-white hover:shadow-md'
                         }`}
                         title={g.name}
                       >
-                        <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center mb-1 relative">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center mb-1 relative">
                           {g.imageUrl ? (
-                            <img src={g.imageUrl} alt="" className="w-full h-full object-contain transition-transform duration-200 group-hover:scale-105" onError={(e) => { e.target.style.display = 'none'; }} />
+                            <img src={g.imageUrl} alt="" className="w-full h-full object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
                           ) : (
                             <span className="text-2xl">🎁</span>
                           )}
@@ -453,27 +485,28 @@ const InboxEmailComposer = ({ email, onClose, onSent, user }) => {
                             <span className="absolute bottom-0 left-0 bg-red-500 text-white text-[9px] font-bold px-1 rounded-tr">FREE</span>
                           )}
                         </div>
-                        <span className="text-xs font-semibold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200 min-h-[1rem]">
+                        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 min-h-[1rem]">
                           {isFree ? 'FREE' : `${cost} Credits`}
                         </span>
                       </button>
-                      );
-                    })}
+                    );
+                  })}
                 </div>
               )}
             </div>
-        </div>
+          </div>
 
-        {/* Send Button - fixed at bottom */}
-        <div className="flex-shrink-0 p-3 sm:p-4 pt-2 border-t border-gray-200/80 bg-white/90 backdrop-blur-sm">
+          <div className={EMAIL_COMPOSER_FOOTER}>
             <button
+              type="button"
               onClick={handleSend}
-              disabled={sending || (!message.trim() && !selectedMedia && selectedGifts.length === 0 && emailAttachments.length === 0)}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 sm:py-4 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg text-sm sm:text-base"
+              disabled={sending || uploadingAttachment || (!message.trim() && !selectedMedia && selectedGifts.length === 0 && emailAttachments.length === 0)}
+              className={EMAIL_COMPOSER_SEND_BTN}
             >
-              <FaEnvelope className="text-lg sm:text-xl shrink-0" />
-              <span>{sending ? 'SENDING...' : 'SEND EMAIL'}</span>
+              <FaEnvelope className="text-base sm:text-xl shrink-0" />
+              <span>{sending ? 'SENDING...' : uploadingAttachment ? 'UPLOADING...' : 'SEND EMAIL'}</span>
             </button>
+          </div>
         </div>
       </div>
     </div>

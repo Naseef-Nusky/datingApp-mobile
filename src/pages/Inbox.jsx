@@ -4,7 +4,7 @@ import axios from 'axios';
 import { connectAppSocket, getSocketServerUrl } from '../utils/socketServerUrl';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { FaEnvelope, FaEnvelopeOpen, FaTrash, FaReply, FaCamera, FaVideo, FaSpinner, FaSearch, FaVolumeUp, FaEllipsisV, FaPhone, FaGift } from 'react-icons/fa';
+import { FaEnvelope, FaEnvelopeOpen, FaTrash, FaReply, FaCamera, FaVideo, FaSpinner, FaSearch, FaVolumeUp, FaEllipsisV, FaPhone, FaGift, FaUsers } from 'react-icons/fa';
 import EmailDetailModal from '../components/EmailDetailModal';
 import InboxEmailComposer from '../components/InboxEmailComposer';
 import ContactsSidebar from '../components/ContactsSidebar';
@@ -13,6 +13,7 @@ import {
   enrichChatRequestsWithProfiles,
   acceptChatRequestAndNavigate,
 } from '../utils/chatRequests';
+import { useServiceAccess } from '../hooks/useServiceAccess';
 
 const Inbox = () => {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ const Inbox = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { t, translatePageNow } = useLanguage();
+  const { ensureCanSendEmailAccess } = useServiceAccess();
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // 'all', 'unread', 'read'
@@ -366,7 +368,8 @@ const Inbox = () => {
     }
   };
 
-  const handleReplyClick = (email) => {
+  const handleReplyClick = async (email) => {
+    if (!(await ensureCanSendEmailAccess())) return;
     setComposerEmail(email);
     setShowComposer(true);
     setShowEmailModal(false);
@@ -471,14 +474,33 @@ const Inbox = () => {
   return (
     <div className="min-h-screen bg-white">
       <div className="container mx-auto px-2 sm:px-4 max-w-6xl">
-        <div className="flex h-[calc(100*var(--vh)-64px)]">
+        <div className="flex h-[calc(100*var(--vh)-64px-env(safe-area-inset-top,0px))] min-h-0">
            {/* Main Inbox Area */}
-           <div className="flex-1 flex flex-col overflow-hidden">
+           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* Mobile contacts + filter row */}
+          <div className="flex items-center justify-between border-b border-gray-200 bg-white lg:hidden px-2">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileSection('contacts-sidebar');
+                setShowMobileSidebar(true);
+              }}
+              className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-700 hover:text-blue-600"
+            >
+              <FaUsers className="text-base" />
+              <span>{t('common.contacts')}</span>
+              {totalUnreadContacts > 0 && (
+                <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                  {totalUnreadContacts > 99 ? '99+' : totalUnreadContacts}
+                </span>
+              )}
+            </button>
+          </div>
           {/* Filter Tabs */}
-          <div className="flex border-b border-gray-200 bg-white">
+          <div className="flex border-b border-gray-200 bg-white overflow-x-auto">
             <button
               onClick={() => setFilter('all')}
-              className={`px-6 py-3 text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-3 sm:px-6 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 filter === 'all'
                   ? 'bg-white border-b-2 border-blue-600 text-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -488,7 +510,7 @@ const Inbox = () => {
             </button>
             <button
               onClick={() => setFilter('unread')}
-              className={`px-6 py-3 text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-3 sm:px-6 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 filter === 'unread'
                   ? 'bg-white border-b-2 border-blue-600 text-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -498,7 +520,7 @@ const Inbox = () => {
             </button>
             <button
               onClick={() => setFilter('read')}
-              className={`px-6 py-3 text-sm font-medium transition-colors ${
+              className={`flex-1 min-w-0 px-3 sm:px-6 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 filter === 'read'
                   ? 'bg-white border-b-2 border-blue-600 text-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -609,7 +631,7 @@ const Inbox = () => {
       {/* Mobile Sidebar Overlay - same ContactsSidebar as desktop */}
       {showMobileSidebar && (
         <div className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-50" onClick={() => setShowMobileSidebar(false)}>
-          <div className="absolute right-0 top-0 h-full w-80 bg-white shadow-xl overflow-y-auto flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute right-0 top-0 h-full w-full max-w-sm bg-white shadow-xl overflow-y-auto flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
               <h2 className="font-semibold text-gray-800">{t('common.contacts')}</h2>
               <button
@@ -680,18 +702,20 @@ const Inbox = () => {
       />
 
       {/* Email Composer Modal */}
-      <InboxEmailComposer
-        email={composerEmail}
-        onClose={() => {
-          setShowComposer(false);
-          setComposerEmail(null);
-        }}
-        onSent={() => {
-          fetchEmails();
-          fetchContacts();
-        }}
-        user={user}
-      />
+      {showComposer && composerEmail && (
+        <InboxEmailComposer
+          email={composerEmail}
+          onClose={() => {
+            setShowComposer(false);
+            setComposerEmail(null);
+          }}
+          onSent={() => {
+            fetchEmails();
+            fetchContacts();
+          }}
+          user={user}
+        />
+      )}
     </div>
   );
 };

@@ -164,15 +164,19 @@ const SearchFilterModal = ({ isOpen, onClose, onApplyFilters }) => {
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 z-[90]" 
+      <div
+        className="fixed inset-0 z-[90] bg-black/40 sm:bg-transparent"
         onClick={onClose}
-      ></div>
-      
-      {/* Dropdown - Positioned below button */}
-      <div className="fixed sm:absolute top-16 sm:top-full right-2 sm:right-0 left-2 sm:left-auto mt-0 sm:mt-2 bg-white rounded-lg shadow-2xl w-[calc(100%-1rem)] sm:w-[500px] lg:w-[600px] z-[100] overflow-hidden border border-gray-200" style={{ maxHeight: 'calc(100*var(--vh) - 5rem)' }}>
+        aria-hidden
+      />
+
+      {/* Panel — full-screen sheet on mobile, dropdown on desktop */}
+      <div
+        className="fixed inset-x-0 bottom-0 top-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:left-auto sm:mt-2 z-[100] flex flex-col bg-white sm:rounded-lg shadow-2xl border border-gray-200 w-full sm:w-[500px] lg:w-[600px] max-h-none sm:max-h-[calc(100*var(--vh)-5rem)] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="bg-white px-3 sm:px-4 lg:px-6 py-3 sm:py-4 flex items-center justify-between border-b border-gray-200">
+        <div className="bg-white px-3 sm:px-4 lg:px-6 py-3 sm:py-4 flex items-center justify-between border-b border-gray-200 flex-shrink-0">
           <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-800">Search for Your Matches</h2>
           <div className="flex items-center space-x-2 sm:space-x-4">
             <button
@@ -191,7 +195,7 @@ const SearchFilterModal = ({ isOpen, onClose, onApplyFilters }) => {
         </div>
 
         {/* Content - Scrollable */}
-        <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 overflow-y-auto" style={{ maxHeight: 'calc(100*var(--vh) - 12rem)' }}>
+        <div className="flex-1 min-h-0 p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
           {/* Gender Preference and Age Range - One Line on desktop, stacked on mobile */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end space-y-4 sm:space-y-0 sm:space-x-4">
             {/* Gender Preference */}
@@ -286,21 +290,21 @@ const SearchFilterModal = ({ isOpen, onClose, onApplyFilters }) => {
                 Select all
               </button>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
               {zodiacSigns.map((sign) => (
                 <label
                   key={sign.id}
-                  className="flex items-center space-x-1.5 sm:space-x-2 cursor-pointer p-1.5 sm:p-2 hover:bg-gray-50 rounded transition"
+                  className="flex items-center gap-2 cursor-pointer p-2.5 sm:p-2 hover:bg-gray-50 active:bg-gray-100 rounded-lg transition min-h-[44px] touch-manipulation"
                 >
                   <input
                     type="checkbox"
                     checked={filters.zodiacSigns.includes(sign.id)}
                     onChange={() => toggleZodiacSign(sign.id)}
-                    className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="w-5 h-5 sm:w-4 sm:h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 flex-shrink-0"
                   />
-                  <div className="flex items-center space-x-1 sm:space-x-1.5">
-                    <span className="text-base sm:text-lg">{sign.symbol}</span>
-                    <span className="text-[10px] sm:text-xs text-gray-700">{sign.name}</span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-lg sm:text-xl flex-shrink-0">{sign.symbol}</span>
+                    <span className="text-xs sm:text-sm text-gray-700 truncate">{sign.name}</span>
                   </div>
                 </label>
               ))}
@@ -637,7 +641,7 @@ const SearchFilterModal = ({ isOpen, onClose, onApplyFilters }) => {
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 border-t border-gray-200">
+        <div className="bg-gray-50 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 border-t border-gray-200 flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             onClick={handleShowMatches}
             className="w-full bg-red-500 text-white py-2.5 sm:py-3 rounded-lg font-semibold hover:bg-red-600 transition text-sm sm:text-base shadow-md"

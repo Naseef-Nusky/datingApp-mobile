@@ -310,11 +310,11 @@ const AgoraVoiceCall = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 z-50 flex flex-col items-center justify-center">
-      <div className="text-center text-white mb-12">
+    <div className="fixed inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 z-50 flex flex-col h-[100dvh] pt-[env(safe-area-inset-top)] pb-[max(1.5rem,env(safe-area-inset-bottom))] px-4">
+      <div className="flex-1 flex flex-col items-center justify-center text-center text-white min-h-0">
         {/* Avatar */}
         {remoteUserProfile?.photos?.[0]?.url || (typeof remoteUserProfile?.photos?.[0] === 'string' ? remoteUserProfile.photos[0] : null) ? (
-          <div className={`w-40 h-40 rounded-full overflow-hidden mx-auto mb-6 shadow-2xl border-4 border-white border-opacity-30 ${!isRemoteConnected ? 'animate-pulse' : ''}`}>
+          <div className={`w-28 h-28 sm:w-40 sm:h-40 rounded-full overflow-hidden mx-auto mb-4 sm:mb-6 shadow-2xl border-4 border-white border-opacity-30 ${!isRemoteConnected ? 'animate-pulse' : ''}`}>
             <img 
               src={remoteUserProfile.photos[0]?.url || remoteUserProfile.photos[0]} 
               alt={remoteUserProfile.firstName || remoteUserId}
@@ -322,15 +322,15 @@ const AgoraVoiceCall = ({
             />
           </div>
         ) : (
-          <div className={`w-40 h-40 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl border-4 border-white border-opacity-30 ${!isRemoteConnected ? 'animate-pulse' : ''}`}>
-            <span className="text-5xl font-bold">
+          <div className={`w-28 h-28 sm:w-40 sm:h-40 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl border-4 border-white border-opacity-30 ${!isRemoteConnected ? 'animate-pulse' : ''}`}>
+            <span className="text-4xl sm:text-5xl font-bold">
               {(remoteUserProfile?.firstName || remoteUserId)?.[0]?.toUpperCase() || 'U'}
             </span>
           </div>
         )}
         
         {/* Name */}
-        <h2 className="text-3xl font-semibold mb-2">
+        <h2 className="text-2xl sm:text-3xl font-semibold mb-2">
           {remoteUserProfile?.firstName || remoteUserId || 'Unknown'}
         </h2>
         {remoteUserProfile?.lastName && (
@@ -367,9 +367,9 @@ const AgoraVoiceCall = ({
             {/* Call Status */}
             {remoteUsers.length > 0 ? (
               <div className="mt-4">
-                <p className="text-sm text-green-400 font-semibold flex items-center justify-center space-x-2">
+                <p className="text-sm text-green-400 font-semibold flex items-center justify-center gap-2 px-2">
                   <span>●</span>
-                  <span>Call Active - Audio Connected</span>
+                  <span>Audio connected</span>
                 </p>
               </div>
             ) : (
@@ -380,7 +380,7 @@ const AgoraVoiceCall = ({
       </div>
 
       {/* Controls */}
-      <div className="flex items-center space-x-6">
+      <div className="flex-shrink-0 flex items-center justify-center gap-6 pb-2">
         <button
           onClick={toggleMute}
           className={`p-5 rounded-full ${
@@ -400,11 +400,6 @@ const AgoraVoiceCall = ({
         >
           <FaPhone size={28} className="rotate-135" />
         </button>
-      </div>
-      
-      {/* Call Duration (optional - can be added later) */}
-      <div className="mt-8 text-gray-400 text-sm">
-        Voice Call
       </div>
     </div>
   );

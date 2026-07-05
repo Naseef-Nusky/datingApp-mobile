@@ -19,6 +19,106 @@ export const AuthProvider = ({ children }) => {
   /** Skip one /me fetch after magic-link verify (user already returned from API). */
   const skipNextTokenFetchRef = useRef(false);
 
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+    delete axios.defaults.headers.common['Authorization'];
+  }, []);
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/auth/me');
+      const userData = response.data.user || response.data;
+      setUser(userData);
+      const credits = Number(userData?.credits);
+      if (Number.isFinite(credits)) {
+        window.dispatchEvent(new CustomEvent('credits-updated', { detail: { credits } }));
+      }
+
+      // Auto-register in Chat for ALL users immediately
+      if (userData?.id && !sessionStorage.getItem(`chat_reg_${userData.id}`)) {
+        sessionStorage.setItem(`chat_reg_${userData.id}`, 'true');
+        setTimeout(async () => {
+          try {
+            const chatTokenResponse = await axios.post('/api/agora/chat-token', {
+              userId: userData.id.toString(),
+            });
+            if (chatTokenResponse.data?.appKey) {
+              console.log('🔄 Auto-registering user in Chat:', userData.id);
+              const registered = await autoRegisterInChat(userData.id, chatTokenResponse.data.appKey);
+              if (registered) {
+                console.log('✅ User successfully auto-registered in Chat');
+              } else {
+                console.log('✅ User marked as chat-ready (will be registered when they open chat)');
+              }
+            }
+          } catch (regError) {
+            console.log('⚠️ Auto-registration attempt:', regError.message);
+            sessionStorage.removeItem(`chat_reg_${userData.id}`);
+          }
+        }, 500);
+      }
+
+      return userData;
+    } catch (error) {
+      console.error('Fetch user error:', error);
+      logout();
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [logout]);
+
+  /** Merge fields from GET /api/auth/me without a second round-trip. */
+  const applyAuthMeResponse = useCallback((data) => {
+    const userData = data?.user;
+    if (userData) {
+      setUser((prev) => ({ ...(prev || {}), ...userData }));
+      window.dispatchEvent(new CustomEvent('credits-updated', { detail: { credits: userData.credits } }));
+    }
+    return data?.profile ?? null;
+  }, []);
+
+  /** Fetch authoritative balance from /api/credits/balance. */
+  const refreshCreditBalance = useCallback(async () => {
+    try {
+      const { data } = await axios.get('/api/credits/balance');
+      const credits = Number(data?.credits);
+      const resolvedCredits = Number.isFinite(credits) ? credits : 0;
+      setUser((prev) => ({
+        ...(prev || {}),
+        credits: resolvedCredits,
+        ...(data.subscriptionPlan != null && { subscriptionPlan: data.subscriptionPlan }),
+        ...(data.subscriptionExpires != null && { subscriptionExpires: data.subscriptionExpires }),
+      }));
+      window.dispatchEvent(
+        new CustomEvent('credits-updated', { detail: { credits: resolvedCredits } }),
+      );
+      return resolvedCredits;
+    } catch (error) {
+      console.error('Refresh credit balance error:', error);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const onCreditsUpdated = (event) => {
+      const credits = Number(event?.detail?.credits);
+      if (Number.isNaN(credits)) return;
+      setUser((prev) => (prev ? { ...prev, credits } : prev));
+    };
+    const onRefreshRequested = () => {
+      refreshCreditBalance();
+    };
+    window.addEventListener('credits-updated', onCreditsUpdated);
+    window.addEventListener('credits-refresh-requested', onRefreshRequested);
+    return () => {
+      window.removeEventListener('credits-updated', onCreditsUpdated);
+      window.removeEventListener('credits-refresh-requested', onRefreshRequested);
+    };
+  }, [refreshCreditBalance]);
+
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -30,54 +130,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
-  }, [token]);
-
-  const fetchUser = async () => {
-    try {
-      const response = await axios.get('/api/auth/me');
-      // The API returns { user: {...}, profile: {...} }
-      // We need to extract just the user object
-      const userData = response.data.user || response.data;
-      setUser(userData);
-      
-      // Auto-register in Chat for ALL users immediately
-      // This ensures all users can chat right away
-      if (userData?.id && !sessionStorage.getItem(`chat_reg_${userData.id}`)) {
-        // Mark that we've attempted registration for this session
-        sessionStorage.setItem(`chat_reg_${userData.id}`, 'true');
-        
-        // Auto-register immediately in background
-        setTimeout(async () => {
-          try {
-            // Get appKey and register - this also marks user as chat-ready in backend
-            const chatTokenResponse = await axios.post('/api/agora/chat-token', {
-              userId: userData.id.toString(),
-            });
-            if (chatTokenResponse.data?.appKey) {
-              console.log('🔄 Auto-registering user in Chat:', userData.id);
-              const registered = await autoRegisterInChat(userData.id, chatTokenResponse.data.appKey);
-              if (registered) {
-                console.log('✅ User successfully auto-registered in Chat');
-              } else {
-                // Even if registration didn't complete, user is marked as chat-ready in backend
-                console.log('✅ User marked as chat-ready (will be registered when they open chat)');
-              }
-            }
-          } catch (regError) {
-            // Non-critical, just log it
-            console.log('⚠️ Auto-registration attempt:', regError.message);
-            // Remove session flag on error so it can retry next time
-            sessionStorage.removeItem(`chat_reg_${userData.id}`);
-          }
-        }, 500); // Reduced delay - register immediately
-      }
-    } catch (error) {
-      console.error('Fetch user error:', error);
-      logout();
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [token, fetchUser]);
 
   const login = async (email, password) => {
     try {
@@ -163,13 +216,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
-    delete axios.defaults.headers.common['Authorization'];
-  };
-
   const loginWithToken = useCallback((newToken, userData = null) => {
     localStorage.setItem('token', newToken);
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -182,7 +228,20 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, login, register, logout, fetchUser, loginWithToken }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        token,
+        login,
+        register,
+        logout,
+        fetchUser,
+        loginWithToken,
+        applyAuthMeResponse,
+        refreshCreditBalance,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

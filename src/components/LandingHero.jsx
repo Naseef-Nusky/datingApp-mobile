@@ -10,6 +10,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { buildSendLoginLinkPayload } from '../utils/sendLoginLinkPayload';
 import { getCheckInboxButtonLabel, openEmailInbox } from '../utils/emailInbox';
 import { authorizeAppleSignIn } from '../utils/nativeAppleSignIn';
+import { mobileApiUrl } from '../api/mobileApi';
 
 const isIosNativeShell = () =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
@@ -106,7 +107,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
     }
   };
 
-  const handleCreateAccount = async (e) => {
+  const handleCreateAccount = (e) => {
     e.preventDefault();
     setLoginError('');
     const nameTrimmed = signupName.trim();
@@ -127,22 +128,13 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
       setLoginError(t('auth.pleaseAcceptTerms'));
       return;
     }
-    setLoginLoading(true);
-    try {
-      const res = await axios.post('/api/auth/send-login-link', buildSendLoginLinkPayload(emailTrimmed));
-      // store name for later steps if needed
-      sessionStorage.setItem('signup_name', nameTrimmed);
-      setMagicSentEmail(emailTrimmed);
-      setLoginMode('magicSent');
-      // if dev link is returned, surface it to help in development
-      if (res.data?._devLoginLink) {
-        setLoginError(`Dev login link: ${res.data._devLoginLink}`);
-      }
-    } catch (err) {
-      setLoginError(err.response?.data?.message || 'Failed to create account. Please try again.');
-    } finally {
-      setLoginLoading(false);
-    }
+    setShowLoginPopup(false);
+    navigate('/register', {
+      state: {
+        prefilledEmail: emailTrimmed,
+        prefilledFirstName: nameTrimmed,
+      },
+    });
   };
 
   const handlePasswordLogin = async (e) => {
@@ -369,7 +361,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
                   ) : loginMode === 'signup' ? (
                     <form onSubmit={handleCreateAccount} className="space-y-3">
                       <p className="text-xs text-gray-500">
-                        Enter your email to receive a login link.
+                        Continue to set your password and complete your profile.
                       </p>
                       <input
                         type="text"
@@ -592,7 +584,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
               {t('landing.takeAChance')}
             </Link>
             <a
-              href={`${import.meta.env.VITE_API_URL || ''}/api/auth/google`}
+              href={mobileApiUrl('/api/auth/google')}
               className="flex items-center justify-center gap-3 w-full bg-white border border-gray-200 text-gray-800 text-base font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition no-underline"
             >
               <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
@@ -887,7 +879,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
             ) : loginMode === 'signup' ? (
               <form onSubmit={handleCreateAccount} className="space-y-3">
                 <p className="text-xs text-gray-500 mb-1">
-                  Enter your email to receive a login link.
+                  Continue to set your password and complete your profile.
                 </p>
                 <input
                   type="text"
@@ -1042,7 +1034,7 @@ export default function LandingHero({ backgroundImage = "/hero%20img.png" }) {
             Give it a try!
           </Link>
           <a
-            href={`${import.meta.env.VITE_API_URL || ''}/api/auth/google`}
+            href={mobileApiUrl('/api/auth/google')}
             className="flex items-center justify-center gap-3 w-full bg-white border border-gray-200 text-gray-800 text-base font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition no-underline shadow"
           >
             <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">

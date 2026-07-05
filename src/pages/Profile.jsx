@@ -20,24 +20,31 @@ import FreeUserBadge from '../components/FreeUserBadge';
 import VerifiedBadge from '../components/VerifiedBadge';
 import { createSafeChannelName } from '../utils/agoraUtils';
 import { interestIcons, defaultInterestIcon } from '../utils/interestIcons';
-import { CONTACT_INFO_WARNING, hasBlockedContactInfo } from '../utils/contactInfoBlock';
+import { getDisplayZodiac } from '../utils/zodiac';
 import {
-  mapChatRequestFromApi,
   enrichChatRequestsWithProfiles,
   acceptChatRequestAndNavigate,
 } from '../utils/chatRequests';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
+import { useServiceAccess } from '../hooks/useServiceAccess';
+import { useCreditsSync } from '../hooks/useCreditsSync';
+import CompatibilityPanel from '../mobile/components/CompatibilityPanel';
 
 const Profile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, fetchUser } = useAuth();
+  const { syncCreditsAfterCall } = useCreditsSync();
   const { t } = useLanguage();
   const {
-    handleInsufficientCreditsError,
     handleCallAccessDenied,
   } = useInsufficientCreditsHandler();
+  const {
+    ensureCanOpenChat,
+    ensureCanSendEmailAccess,
+    ensureCanStartCall,
+  } = useServiceAccess();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [similarProfiles, setSimilarProfiles] = useState([]);
@@ -46,11 +53,11 @@ const Profile = () => {
   const [callRequests, setCallRequests] = useState([]); // Missed calls
   const [showLessChatRequests, setShowLessChatRequests] = useState(false);
   const [typingUsers, setTypingUsers] = useState(new Set()); // Track which users are typing
-  const [message, setMessage] = useState('');
   const [showFullBio, setShowFullBio] = useState(false);
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [chatDraftMessage, setChatDraftMessage] = useState('');
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showPresentShop, setShowPresentShop] = useState(false);
   const [presentCheckoutState, setPresentCheckoutState] = useState(null);
@@ -60,18 +67,32 @@ const Profile = () => {
   const [outgoingCall, setOutgoingCall] = useState(null); // Track outgoing call waiting for acceptance
   const outgoingCallRef = useRef(null); // Ref to track outgoing call (for socket handlers)
   const socketRef = useRef(null);
-  const paymentSuccessHandledRef = useRef(null);
+  const [compatibility, setCompatibility] = useState(null);
+  const [compatibilityLoading, setCompatibilityLoading] = useState(false);
+  const [compatibilityError, setCompatibilityError] = useState('');
 
-  // Open chat or email composer automatically when coming from dashboard with state
+  // Open chat or email composer only after credit check (same as calls)
   useEffect(() => {
-    if (location.state?.openEmailComposer) {
+    if (!user?.id) return;
+
+    const tryOpenEmail = async () => {
+      if (!(await ensureCanSendEmailAccess())) return;
       setShowEmailComposer(true);
       setShowChat(false);
-    } else if (location.state?.openChat) {
+    };
+
+    const tryOpenChat = async () => {
+      if (!(await ensureCanOpenChat())) return;
       setShowChat(true);
       setShowEmailComposer(false);
+    };
+
+    if (location.state?.openEmailComposer) {
+      tryOpenEmail();
+    } else if (location.state?.openChat) {
+      tryOpenChat();
     }
-  }, [location.state]);
+  }, [location.state, user?.id, ensureCanOpenChat, ensureCanSendEmailAccess]);
 
   // Handle refill checkout return on profile pages and reopen present flow.
   useEffect(() => {
@@ -83,7 +104,6 @@ const Profile = () => {
     const presentStep = params.get('presentStep');
     const isTargetProfile =
       !presentReceiverId || String(presentReceiverId) === String(id);
-    const apiUrl = import.meta.env.VITE_API_URL || '';
 
     const loadPendingPresentCheckout = () => {
       const raw = sessionStorage.getItem('pendingPresentCheckout');
@@ -118,37 +138,17 @@ const Profile = () => {
       setShowPresentShop(true);
     }
 
-    if (refillStatus === 'success' && sessionId) {
-      const key = `profile-refill-${sessionId}`;
-      if (paymentSuccessHandledRef.current === key) return;
-      paymentSuccessHandledRef.current = key;
-
-      axios
-        .post(`${apiUrl}/api/credits/confirm-refill-payment`, { session_id: sessionId })
-        .then((res) => {
-          fetchUser();
-          const added = res.data?.creditsAdded ?? '';
-          alert(added ? `Credits added: ${added}` : 'Credits added successfully.');
-          if (isTargetProfile) {
-            if (presentStep === 'checkout') {
-              loadPendingPresentCheckout();
-            }
-            if (shouldOpenPresentShop) setShowPresentShop(true);
-          }
-        })
-        .catch((err) => {
-          paymentSuccessHandledRef.current = null;
-          const msg =
-            err.response?.data?.message ||
-            'Could not confirm refill payment. Credits may still be applied.';
-          alert(msg);
-        });
+    if (refillStatus === 'success' && sessionId && isTargetProfile) {
+      if (presentStep === 'checkout') {
+        loadPendingPresentCheckout();
+      }
+      if (shouldOpenPresentShop) setShowPresentShop(true);
     }
 
-    if (refillStatus || shouldOpenPresentShop) {
+    if (shouldOpenPresentShop && !refillStatus) {
       navigate(location.pathname, { replace: true, state: location.state || {} });
     }
-  }, [location.search, location.pathname, location.state, id, fetchUser, navigate]);
+  }, [location.search, location.pathname, location.state, id, navigate]);
 
   // Socket.IO setup for real-time call notifications
   useEffect(() => {
@@ -258,6 +258,7 @@ const Profile = () => {
         setShowVoiceCall(false);
         setOutgoingCall(null);
         outgoingCallRef.current = null;
+        void syncCreditsAfterCall();
       });
 
       // Listen for new chat requests
@@ -404,6 +405,37 @@ const Profile = () => {
       fetchSimilarProfiles();
     }
   }, [profile]);
+
+  useEffect(() => {
+    const ownerId = profile?.userId || id;
+    if (!user?.id || !ownerId || String(user.id) === String(ownerId)) {
+      setCompatibility(null);
+      setCompatibilityError('');
+      return;
+    }
+
+    let cancelled = false;
+    const loadCompatibility = async () => {
+      setCompatibilityLoading(true);
+      setCompatibilityError('');
+      try {
+        const response = await axios.get(`/api/compatibility/with/${ownerId}`);
+        if (!cancelled) setCompatibility(response.data);
+      } catch (err) {
+        if (!cancelled) {
+          setCompatibility(null);
+          setCompatibilityError(err.response?.data?.message || 'Could not load compatibility');
+        }
+      } finally {
+        if (!cancelled) setCompatibilityLoading(false);
+      }
+    };
+
+    loadCompatibility();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.userId, id, user?.id]);
 
   const fetchProfile = async () => {
     try {
@@ -688,51 +720,25 @@ const Profile = () => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-
-    if (hasBlockedContactInfo(message.trim())) {
-      alert(CONTACT_INFO_WARNING);
-      return;
-    }
-
-    try {
-      await axios.post('/api/messages', {
-        receiverId: id,
-        content: message.trim(),
-        messageType: 'text',
-      });
-      setMessage('');
-      // Show success message or notification
-    } catch (error) {
-      console.error('Send message error:', error);
-      if (error.response?.status === 400 && error.response?.data?.code === 'CONTACT_INFO_BLOCKED') {
-        alert(CONTACT_INFO_WARNING);
-      }
-    }
-  };
-
-  const handleChatNow = () => {
-    // Open chat directly without requiring a request
+  const handleChatNow = async () => {
+    if (!(await ensureCanOpenChat())) return;
+    setChatDraftMessage('');
     setShowChat(true);
-    setShowEmailComposer(false); // Close email if open
+    setShowEmailComposer(false);
   };
 
-  const ensureCanStartCall = async (callType) => {
-    try {
-      const { data } = await axios.get('/api/credits/call-access', {
-        params: { callType },
-      });
-      if (data?.allowed) return true;
-      handleCallAccessDenied(data);
-      return false;
-    } catch (error) {
-      if (handleInsufficientCreditsError(error)) return false;
-      const payload = error.response?.data;
-      if (payload && handleCallAccessDenied(payload)) return false;
-      alert(payload?.message || 'Call could not be started.');
-      return false;
-    }
+  const handleAskQuestion = async (question) => {
+    if (!question?.trim()) return;
+    if (!(await ensureCanOpenChat())) return;
+    setChatDraftMessage(String(question).trim());
+    setShowChat(true);
+    setShowEmailComposer(false);
+  };
+
+  const handleSendEmail = async () => {
+    if (!(await ensureCanSendEmailAccess())) return;
+    setShowEmailComposer(true);
+    setShowChat(false);
   };
 
   const handleVideoCall = async () => {
@@ -849,11 +855,6 @@ const Profile = () => {
     } catch (error) {
       console.error('Error initiating voice call:', error);
     }
-  };
-
-  const handleSendEmail = () => {
-    setShowEmailComposer(true);
-    setShowChat(false); // Close chat if open
   };
 
   const handleEmailSent = () => {
@@ -1010,6 +1011,17 @@ const Profile = () => {
 
             {/* Main Content Sections */}
             <div className="mx-auto px-2 sm:px-4 lg:pl-8 py-4 sm:py-6 lg:py-8 mt-12 sm:mt-16 lg:mt-24">
+            {user?.id && user?.id !== profileOwnerId && (
+              <div className="mb-4 sm:mb-6">
+                <CompatibilityPanel
+                  data={compatibility}
+                  loading={compatibilityLoading}
+                  error={compatibilityError}
+                  otherName={profile.firstName}
+                  onAskQuestion={handleAskQuestion}
+                />
+              </div>
+            )}
             {/* About Section */}
             {profile.bio && (
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
@@ -1028,17 +1040,8 @@ const Profile = () => {
               </div>
             )}
 
-            {/* Message Input and Action Buttons */}
+            {/* Action Buttons */}
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
-              <input
-                type="text"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Type your message here..."
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border border-gray-300 rounded-lg mb-3 sm:mb-4 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              />
-              
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mb-3 sm:mb-4">
                 <button
                   onClick={handleChatNow}
@@ -1186,7 +1189,7 @@ const Profile = () => {
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
                 <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">About Me</h2>
                 <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-700">
-                  <p><span className="font-semibold">Zodiac sign:</span> {profile.lifestyle?.zodiac || 'No answer'}</p>
+                  <p><span className="font-semibold">Zodiac sign:</span> {getDisplayZodiac(profile.lifestyle) || 'No answer'}</p>
                   <p><span className="font-semibold">Live in:</span> {profile.location?.city || 'No answer'}, {profile.location?.country || ''}</p>
                   <p><span className="font-semibold">Work as:</span> {profile.lifestyle?.work || 'No answer'}</p>
                   <p><span className="font-semibold">Education:</span> {profile.lifestyle?.education || 'No answer'}</p>
@@ -1294,11 +1297,17 @@ const Profile = () => {
                 <AgoraChat
                   userId={user.id}
                   remoteUserId={id}
-                  onClose={() => setShowChat(false)}
+                  initialMessage={chatDraftMessage}
+                  onMessageSent={() => setChatDraftMessage('')}
+                  onClose={() => {
+                    setShowChat(false);
+                    setChatDraftMessage('');
+                  }}
                   embedded={true}
-                  onOpenEmail={() => {
-                    setShowChat(false); // Close chat
-                    setShowEmailComposer(true); // Open email composer
+                  onOpenEmail={async () => {
+                    if (!(await ensureCanSendEmailAccess())) return;
+                    setShowChat(false);
+                    setShowEmailComposer(true);
                   }}
                 />
               </div>
@@ -1307,14 +1316,15 @@ const Profile = () => {
 
           {/* Email Composer - Middle Panel (when email composer is open) */}
           {showEmailComposer && profile && (
-            <div className="w-full min-w-0 max-w-[100vw] lg:w-[56%] overflow-hidden flex flex-col min-h-0 max-lg:fixed max-lg:inset-x-0 max-lg:top-[calc(3.75rem+env(safe-area-inset-top,0px))] max-lg:bottom-0 max-lg:z-40 max-lg:pb-[env(safe-area-inset-bottom,0px)] lg:sticky lg:top-[calc(3.75rem+env(safe-area-inset-top,0px))] lg:h-[calc(100dvh-3.75rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] lg:max-h-[calc(100dvh-3.75rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]">
+            <div className="w-full min-w-0 max-w-[100vw] lg:w-[56%] overflow-hidden flex flex-col min-h-0 max-lg:fixed max-lg:inset-x-0 max-lg:top-[calc(3.75rem+env(safe-area-inset-top,0px))] max-lg:bottom-0 max-lg:z-40 lg:sticky lg:top-[calc(3.75rem+env(safe-area-inset-top,0px))] lg:h-[calc(100dvh-3.75rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] lg:max-h-[calc(100dvh-3.75rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]">
               <ProfileEmailComposer
                 profile={profile}
                 onClose={() => setShowEmailComposer(false)}
                 onSent={handleEmailSent}
-                onOpenChat={() => {
-                  setShowEmailComposer(false); // Close email composer
-                  setShowChat(true); // Open chat
+                onOpenChat={async () => {
+                  if (!(await ensureCanOpenChat())) return;
+                  setShowEmailComposer(false);
+                  setShowChat(true);
                 }}
               />
             </div>
@@ -1360,8 +1370,8 @@ const Profile = () => {
 
       {/* Outgoing Call Waiting UI (Caller side - waiting for receiver to accept) */}
       {outgoingCall && !showVideoCall && !showVoiceCall && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-end sm:items-center justify-center backdrop-blur-sm p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full mx-0 sm:mx-4 text-center pt-[max(1.5rem,env(safe-area-inset-top))]">
             {(profile?.photos?.[0]?.url || (typeof profile?.photos?.[0] === 'string' ? profile.photos[0] : null)) ? (
               <div className="w-32 h-32 rounded-full overflow-hidden mx-auto mb-6 border-4 border-teal-400 shadow-lg animate-pulse">
                 <img 
@@ -1432,6 +1442,7 @@ const Profile = () => {
                 duration: duration || 0, // Pass call duration in seconds
               });
             }
+            void syncCreditsAfterCall();
           }}
           callType="video"
         />
@@ -1454,6 +1465,7 @@ const Profile = () => {
                 duration: duration || 0, // Pass call duration in seconds
               });
             }
+            void syncCreditsAfterCall();
           }}
         />
       )}

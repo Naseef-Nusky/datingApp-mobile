@@ -6,5 +6,10 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.vantagedating.com</string>
+		<string>applinks:vantagedating.com</string>
+	</array>
 </dict>
 </plist>

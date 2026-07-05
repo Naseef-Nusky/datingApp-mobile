@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaComment, FaPaperPlane, FaCoins } from 'react-icons/fa';
 import axios from 'axios';
+import { openStripeCheckout } from '../utils/stripeCheckout';
 
 const DEFAULT_PACKS = [
   { plan: 'basic', creditsLabel: '150 Credits/Mo', wasPrice: '69', price: '19.99', save: 'SAVE 66%' },
@@ -31,8 +32,7 @@ export default function UpgradeSubscriptionModal({ isOpen, onClose, onSubscribed
 
   useEffect(() => {
     if (!isOpen) return;
-    const apiUrl = import.meta.env.VITE_API_URL || '';
-    axios.get(`${apiUrl}/api/credits/subscription-modal`).then((res) => {
+    axios.get('/api/credits/subscription-modal').then((res) => {
       if (res.data && (res.data.subscriptionPacks?.length || res.data.subscriptionModalTitle)) {
         setConfig(res.data);
       }
@@ -53,12 +53,17 @@ export default function UpgradeSubscriptionModal({ isOpen, onClose, onSubscribed
     if (!pack?.plan) return;
     setError(null);
     setSubmitting(true);
-    const apiUrl = import.meta.env.VITE_API_URL || '';
     try {
-      const { data } = await axios.post(`${apiUrl}/api/credits/create-checkout-session`, { plan: pack.plan });
+      const { data } = await axios.post('/api/credits/create-checkout-session', {
+        plan: pack.plan,
+        platform: 'mobile',
+      });
       if (data?.url) {
         onClose?.();
-        window.location.href = data.url;
+        if (data.successUrl) {
+          console.info('[Stripe] Mobile return URL:', data.successUrl);
+        }
+        await openStripeCheckout(data.url, { sessionId: data.sessionId, kind: 'upgrade' });
         return;
       }
       if (data?.message?.includes('not configured')) {
@@ -80,11 +85,11 @@ export default function UpgradeSubscriptionModal({ isOpen, onClose, onSubscribed
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm pt-[max(0px,env(safe-area-inset-top))] pb-[max(0px,env(safe-area-inset-bottom))]"
       onClick={onClose}
     >
       <div
-        className="relative bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[calc(90*var(--vh))] overflow-y-auto"
+        className="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-4xl w-full max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[calc(90*var(--vh))] overflow-y-auto overscroll-contain"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between p-6 pb-4 border-b border-gray-200">
@@ -106,9 +111,9 @@ export default function UpgradeSubscriptionModal({ isOpen, onClose, onSubscribed
           </button>
         </div>
 
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-4">{step1Title}</h3>
+            <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-3 sm:mb-4">{step1Title}</h3>
             {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
             <div className="space-y-3">
               {packs.map((pack) => (
@@ -117,7 +122,7 @@ export default function UpgradeSubscriptionModal({ isOpen, onClose, onSubscribed
                   type="button"
                   onClick={() => handleSubscribe(pack)}
                   disabled={submitting}
-                  className="w-full relative bg-teal-600 hover:bg-teal-700 disabled:opacity-70 text-white rounded-lg p-4 text-left transition shadow-md"
+                  className="w-full relative bg-teal-600 hover:bg-teal-700 active:bg-teal-800 disabled:opacity-70 text-white rounded-xl p-4 text-left transition shadow-md min-h-[72px]"
                 >
                   <span className="absolute top-2 right-2 bg-amber-400 text-amber-900 text-xs font-bold px-2 py-1 rounded-sm shadow">
                     {pack.save}
@@ -152,7 +157,7 @@ export default function UpgradeSubscriptionModal({ isOpen, onClose, onSubscribed
           </div>
         </div>
 
-        <div className="p-6 pt-0 text-center text-xs text-gray-600">
+        <div className="p-4 sm:p-6 pt-0 text-center text-xs text-gray-600 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             className="text-gray-500 text-sm underline hover:text-gray-700"

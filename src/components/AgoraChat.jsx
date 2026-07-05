@@ -4,17 +4,32 @@ import AgoraChat from 'agora-chat';
 import axios from 'axios';
 import { CONTACT_INFO_WARNING, hasBlockedContactInfo } from '../utils/contactInfoBlock';
 import io from 'socket.io-client';
-import { FaPaperPlane, FaTimes, FaSync, FaFire, FaCheckCircle, FaEllipsisV, FaEnvelope, FaPaperclip, FaSmile, FaGift, FaCamera, FaVideo, FaMicrophone, FaStop } from 'react-icons/fa';
+import { FaTimes, FaSync, FaFire, FaCheckCircle, FaEllipsisV, FaEnvelope, FaPaperclip, FaSmile, FaGift, FaCamera } from 'react-icons/fa';
 import TypingIndicator from './TypingIndicator';
 import ChatEmailMessageCard from './ChatEmailMessageCard';
-import { useAuth } from '../context/AuthContext';
+import ChatMediaPanel from './ChatMediaPanel';
+import ChatMessageComposer from './ChatMessageComposer';
+import ChatVoiceMessageBubble from './ChatVoiceMessageBubble';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
+import { useCreditsSync } from '../hooks/useCreditsSync';
+import { useChatVoiceRecorder } from '../hooks/useChatVoiceRecorder';
+import { useServiceAccess } from '../hooks/useServiceAccess';
 import { connectAppSocket } from '../utils/socketServerUrl';
+import { isNative } from '../utils/platform';
+import {
+  CHAT_MEDIA_ACCEPT,
+  capturePhotoWithNativeCamera,
+  inferChatMessageType,
+  openGalleryPicker,
+  prepareChatMediaForUpload,
+  validateChatMediaFile,
+} from '../utils/chatMediaPicker';
 
-const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, onOpenEmail = null }) => {
+const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, onOpenEmail = null, initialMessage = '', onMessageSent = null }) => {
   const navigate = useNavigate();
-  const { fetchUser } = useAuth();
-  const { handleInsufficientCreditsError } = useInsufficientCreditsHandler();
+  const { syncCreditsAfterAction } = useCreditsSync();
+  const { ensureCanOpenChat, ensureCanAffordCredits } = useServiceAccess();
+  const { handleInsufficientCreditsError, handleCallAccessDenied } = useInsufficientCreditsHandler();
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);
@@ -31,12 +46,9 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
   const typingTimeoutRef = useRef(null);
   const socketRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [showWebcam, setShowWebcam] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const recordingIntervalRef = useRef(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
   const fileInputRef = useRef(null);
   const webcamVideoRef = useRef(null);
   const webcamStreamRef = useRef(null);
@@ -85,10 +97,22 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
     return () => { cancelled = true; };
   }, [remoteUserId]);
 
+  const appliedInitialForChatRef = useRef('');
+
   useEffect(() => {
-    // Reset state when userId or remoteUserId changes
+    const draft = String(initialMessage || '').trim();
+    if (!draft) return;
+    const key = `${remoteUserId}:${draft}`;
+    if (appliedInitialForChatRef.current === key) return;
+    appliedInitialForChatRef.current = key;
+    setMessage(draft);
+    setActiveTab('chat');
+    setShowEmojiPicker(false);
+  }, [initialMessage, remoteUserId]);
+
+  useEffect(() => {
     setIsConnected(false);
-    setMessage('');
+    appliedInitialForChatRef.current = '';
     connectionEstablished.current = false;
     error204Occurred.current = false;
     isReconnecting.current = false;
@@ -324,8 +348,71 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
   const openMediaFromEmailActions = () => {
     setActiveTab('media');
     setShowEmojiPicker(false);
-    setTimeout(() => fileInputRef.current?.click(), 150);
   };
+
+  const uploadAndSendChatFile = async (file, messageTypeOverride) => {
+    if (!file) return;
+
+    const validationError = validateChatMediaFile(file);
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
+    if (!(await ensureCanOpenChat())) return;
+
+    setMediaUploading(true);
+    try {
+      const prepared = await prepareChatMediaForUpload(file);
+      const messageType = messageTypeOverride || inferChatMessageType(prepared);
+
+      const formData = new FormData();
+      formData.append('file', prepared);
+      formData.append('receiverId', remoteUserId);
+      formData.append('messageType', messageType);
+
+      const uploadResponse = await axios.post('/api/messages/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (uploadResponse.data?.url) {
+        await sendMessageWithContent(
+          uploadResponse.data.url,
+          uploadResponse.data.messageType || messageType,
+        );
+        setActiveTab('chat');
+      }
+    } catch (error) {
+      console.error('Chat media upload error:', error);
+      if (!handleInsufficientCreditsError(error) && !handleCallAccessDenied(error.response?.data)) {
+        alert(error.response?.data?.message || error.message || 'Failed to upload media');
+      }
+    } finally {
+      setMediaUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const uploadChatFileRef = useRef(null);
+  uploadChatFileRef.current = uploadAndSendChatFile;
+
+  const {
+    isRecording,
+    isStarting,
+    isVoiceActive,
+    recordingTime,
+    voiceSlideCancel,
+    voiceSupported,
+    startLockedRecording,
+    sendRecording,
+    cancelRecording,
+    onHoldMove,
+  } = useChatVoiceRecorder({
+    uploadFile: (file, type) => uploadChatFileRef.current?.(file, type),
+    blocked: Boolean(message.trim()) || mediaUploading,
+  });
 
   const initializeAgoraChat = async () => {
     if (isInitializing.current) {
@@ -710,6 +797,8 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
       return;
     }
 
+    if (!(await ensureCanOpenChat())) return;
+
     // Ensure chat client exists
     if (!chatClient.current) {
       console.log('⚠️ Chat client not initialized - initializing now...');
@@ -816,9 +905,8 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
         });
 
         // Refresh user data so updated credit balance is shown
-        if (fetchUser) {
-          fetchUser();
-        }
+        await syncCreditsAfterAction(dbResponse.data);
+        onMessageSent?.();
         
         console.log('✅ Message saved to database with ID:', dbResponse.data.id);
         
@@ -840,20 +928,21 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
           return;
         }
 
-        const msg = dbError.response?.data?.message || dbError.message || 'Failed to send message';
-        if (dbError.response?.status === 400 && msg.toLowerCase().includes('insufficient')) {
-          // Remove optimistic message because send actually failed
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated.pop();
-            return updated;
-          });
-          if (!handleInsufficientCreditsError(dbError)) {
-            alert(msg);
-          }
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated.pop();
+          return updated;
+        });
+        const payload = dbError.response?.data;
+        if (payload && handleCallAccessDenied(payload)) {
           return;
         }
-        // Continue anyway - try to send via Agora, but we know DB save failed
+        if (handleInsufficientCreditsError(dbError)) {
+          return;
+        }
+        const msg = dbError.response?.data?.message || dbError.message || 'Failed to send message';
+        alert(msg);
+        return;
       }
       
       // Send message via Agora (real-time delivery)
@@ -990,10 +1079,14 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
 
   const sendGift = async (giftId) => {
     if (!remoteUserId || !giftId) return;
+    const gift = catalogGifts.find((g) => String(g.id) === String(giftId));
+    const cost = Number(gift?.creditCost) || 0;
+    if (!(await ensureCanAffordCredits(cost))) return;
+
     setSendingGiftId(giftId);
     try {
-      await axios.post('/api/gifts/send', { receiverId: remoteUserId.toString(), giftId });
-      if (fetchUser) fetchUser();
+      const response = await axios.post('/api/gifts/send', { receiverId: remoteUserId.toString(), giftId });
+      await syncCreditsAfterAction(response?.data);
       setTimeout(() => reloadMessages(), 500);
     } catch (err) {
       const data = err.response?.data;
@@ -1006,59 +1099,51 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
     }
   };
 
-  // File upload handler
+  // File upload handler (gallery / device picker)
   const handleFileSelect = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
+    await uploadAndSendChatFile(file);
+  };
 
-    // Don't show selected file - upload immediately
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('receiverId', remoteUserId);
-      
-      // Determine message type based on file type
-      let messageType = 'text';
-      if (file.type.startsWith('image/')) {
-        messageType = 'image';
-      } else if (file.type.startsWith('video/')) {
-        messageType = 'video';
-      } else if (file.type.startsWith('audio/')) {
-        messageType = 'voice';
-      }
-      
-      formData.append('messageType', messageType);
+  const handleChooseFromDevice = () => {
+    if (mediaUploading || isRecording) return;
+    openGalleryPicker(fileInputRef);
+  };
 
-      // Upload file
-      const uploadResponse = await axios.post('/api/messages/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+  const handleTakePhoto = async () => {
+    if (mediaUploading || isRecording) return;
 
-      if (uploadResponse.data && uploadResponse.data.url) {
-        // Send message with file URL - this will show the media immediately in chat
-        await sendMessageWithContent(uploadResponse.data.url, uploadResponse.data.messageType);
-        
-        // Clear file input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
+    if (isNative()) {
+      try {
+        const file = await capturePhotoWithNativeCamera();
+        if (file) {
+          await uploadAndSendChatFile(file, 'image');
         }
-        // Switch back to chat tab after sending
-        setActiveTab('chat');
+      } catch (error) {
+        console.error('Native camera error:', error);
+        alert(error.message || 'Failed to open camera');
       }
-    } catch (error) {
-      console.error('File upload error:', error);
-      alert('Failed to upload file');
+      return;
     }
+
+    setShowWebcam(true);
+    setActiveTab('chat');
   };
 
   // Send message with content (text, image, video, voice)
   const sendMessageWithContent = async (content, messageType = 'text') => {
     if (!content && !message.trim()) return;
 
+    if (!(await ensureCanOpenChat())) return;
+
     const messageContent = content || message.trim();
+    const clearTextInput = messageType === 'text' && !content;
+    if (clearTextInput) {
+      setMessage('');
+    }
     if (messageType === 'text' && hasBlockedContactInfo(messageContent)) {
+      if (clearTextInput) setMessage(messageContent);
       alert(CONTACT_INFO_WARNING);
       return;
     }
@@ -1124,8 +1209,9 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
         });
 
         // Refresh user data so updated credit balance is shown
-        if (fetchUser) {
-          fetchUser();
+        await syncCreditsAfterAction(dbResponse.data);
+        if (messageType === 'text' || messageType === 'voice') {
+          onMessageSent?.();
         }
       }
 
@@ -1169,10 +1255,6 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
         console.warn('⚠️ Cannot send via Agora: chatClient or connection not available');
       }
 
-      if (messageType === 'text') {
-        setMessage('');
-      }
-
       // Reload messages to ensure consistency
       setTimeout(() => {
         reloadMessages();
@@ -1183,15 +1265,24 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
       if (error.response?.status === 400 && error.response?.data?.code === 'CONTACT_INFO_BLOCKED') {
         const tempId = optimisticMessage.id;
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        if (clearTextInput) setMessage(messageContent);
         alert(CONTACT_INFO_WARNING);
         return;
       }
 
       const msg = error.response?.data?.message || error.message || 'Failed to send message';
+      const payload = error.response?.data;
+      if (payload && handleCallAccessDenied(payload)) {
+        const tempId = optimisticMessage.id;
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        if (clearTextInput) setMessage(messageContent);
+        return;
+      }
       if (error.response?.status === 400 && msg.toLowerCase().includes('insufficient')) {
         // Remove optimistic message on insufficient credits
         const tempId = optimisticMessage.id;
         setMessages((prev) => prev.filter(m => m.id !== tempId));
+        if (clearTextInput) setMessage(messageContent);
         if (!handleInsufficientCreditsError(error)) {
           alert(msg);
         }
@@ -1201,83 +1292,9 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
       // Remove optimistic message on any other error
       const tempId = optimisticMessage.id;
       setMessages((prev) => prev.filter(m => m.id !== tempId));
+      if (clearTextInput) setMessage(messageContent);
       alert('Failed to send message');
     }
-  };
-
-  // Voice recording handlers
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      const audioChunks = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], 'voice-message.webm', { type: 'audio/webm' });
-        
-        // Upload audio file
-        const formData = new FormData();
-        formData.append('file', audioFile);
-        formData.append('receiverId', remoteUserId);
-        formData.append('messageType', 'voice');
-
-        try {
-          const uploadResponse = await axios.post('/api/messages/upload', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
-
-          if (uploadResponse.data && uploadResponse.data.url) {
-            // This will show the audio immediately in chat
-            await sendMessageWithContent(uploadResponse.data.url, 'voice');
-            // Switch back to chat tab after sending
-            setActiveTab('chat');
-          }
-        } catch (error) {
-          console.error('Voice upload error:', error);
-          alert('Failed to upload voice message');
-        }
-
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-
-      // Start timer
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      alert('Failed to start recording. Please allow microphone access.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setRecordingTime(0);
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-    }
-  };
-
-  // Format recording time
-  const formatRecordingTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Webcam handlers
@@ -1323,46 +1340,24 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
       canvas.toBlob(async (blob) => {
         if (blob) {
           const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
-          
-          // Upload and send immediately - don't show selected file
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('receiverId', remoteUserId);
-          formData.append('messageType', 'image');
-          
-          try {
-            const uploadResponse = await axios.post('/api/messages/upload', formData, {
-              headers: {
-                'Content-Type': 'multipart/form-data',
-              },
-            });
-            
-            if (uploadResponse.data && uploadResponse.data.url) {
-              // This will show the image immediately in chat
-              await sendMessageWithContent(uploadResponse.data.url, 'image');
-            }
-          } catch (error) {
-            console.error('Photo upload error:', error);
-            alert('Failed to upload photo');
-          }
+          stopWebcam();
+          await uploadAndSendChatFile(file, 'image');
         }
       }, 'image/jpeg', 0.9);
-      
-      stopWebcam();
     } catch (error) {
       console.error('Error capturing photo:', error);
       alert('Failed to capture photo');
     }
   };
 
-  // Start webcam when modal opens
+  // Start webcam when modal opens (web browser only)
   useEffect(() => {
     if (showWebcam) {
       startWebcam();
     } else {
       stopWebcam();
     }
-    
+
     return () => {
       stopWebcam();
     };
@@ -1504,6 +1499,7 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
                   .map((msg, index) => {
                   const isOwn = msg.senderId === userId.toString();
                   const isEmailMsg = msg.messageType === 'email';
+                  const isVoiceMsg = msg.messageType === 'voice' && (msg.mediaUrl || msg.media_url);
                   return (
                     <div
                       key={msg.id || index}
@@ -1519,11 +1515,13 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
                         />
                       ) : (
                       <div
-                        className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-                          isOwn
-                            ? 'bg-white text-black'
-                            : 'bg-white text-black'
-                        }`}
+                        className={`max-w-[85%] rounded-2xl shadow-sm sm:max-w-[75%] ${
+                          isVoiceMsg
+                            ? isOwn
+                              ? 'bg-[#DCF8C6] px-2 py-2'
+                              : 'bg-white px-2 py-2'
+                            : 'bg-white px-4 py-2.5'
+                        } text-black`}
                       >
                         {msg.messageType === 'image' && (msg.mediaUrl || msg.media_url) ? (
                           <div>
@@ -1605,27 +1603,11 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
                               <p className="text-sm mt-2 leading-relaxed">{msg.text}</p>
                             )}
                           </div>
-                        ) : msg.messageType === 'voice' && (msg.mediaUrl || msg.media_url) ? (
-                          <div style={{ padding: 0, margin: 0 }}>
-                            <audio 
-                              src={msg.mediaUrl || msg.media_url} 
-                              controls 
-                              className="w-full min-w-0 max-w-full"
-                              style={{ backgroundColor: 'transparent', padding: 0, margin: 0 }}
-                              preload="metadata"
-                              onError={(e) => {
-                                console.error('Audio load error:', msg.mediaUrl || msg.media_url);
-                                e.target.style.display = 'none';
-                                const errorDiv = document.createElement('div');
-                                errorDiv.className = 'text-sm text-red-500 p-2';
-                                errorDiv.textContent = 'Failed to load audio';
-                                e.target.parentElement.appendChild(errorDiv);
-                              }}
-                            />
-                            {msg.text && msg.text !== '[Voice]' && msg.text !== '[voice]' && msg.text.trim() && (
-                              <p className="text-sm leading-relaxed">{msg.text}</p>
-                            )}
-                          </div>
+                        ) : isVoiceMsg ? (
+                          <ChatVoiceMessageBubble
+                            src={msg.mediaUrl || msg.media_url}
+                            isOwn={isOwn}
+                          />
                         ) : (
                           <p className="text-sm leading-relaxed">{msg.text}</p>
                         )}
@@ -1713,7 +1695,7 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
                           </span>
                         )}
                       </div>
-                      <span className="text-xs font-semibold text-gray-600 opacity-0 group-hover/gift:opacity-100 transition-opacity min-h-[1rem]">
+                      <span className="text-xs font-semibold text-gray-600 opacity-100 sm:opacity-0 sm:group-hover/gift:opacity-100 transition-opacity min-h-[1rem]">
                         {isFree ? 'FREE' : `${cost} Credits`}
                       </span>
                       {sending && <span className="absolute inset-0 flex items-center justify-center text-[9px] text-gray-500 bg-white/80">...</span>}
@@ -1800,65 +1782,26 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
 
           {/* Tab Content - Photo/Video/Audio */}
           {activeTab === 'media' && (
-            <div className="px-4 py-3 border-t border-gray-200 bg-white">
-              <div className="space-y-0 bg-white rounded-lg border border-gray-200 shadow-sm">
-                {/* Choose from Device */}
-                <label className="flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition">
-                  <FaCamera className="text-gray-600 text-lg" />
-                  <span className="text-sm font-medium text-gray-700 uppercase">Choose from Device</span>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,video/*,audio/*"
-                    onChange={(e) => {
-                      handleFileSelect(e);
-                      setActiveTab('chat');
-                    }}
-                    className="hidden"
-                  />
-                </label>
-                
-                {/* Take via Webcam */}
-                <button
-                  onClick={() => {
-                    setShowWebcam(true);
-                    setActiveTab('chat');
-                  }}
-                  className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition"
-                >
-                  <FaVideo className="text-gray-600 text-lg" />
-                  <span className="text-sm font-medium text-gray-700 uppercase">Take via Webcam</span>
-                </button>
-                
-                {/* Record Audio */}
-                <button
-                  onClick={() => {
-                    if (isRecording) {
-                      stopRecording();
-                    } else {
-                      startRecording();
-                    }
-                    setActiveTab('chat');
-                  }}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-b-lg transition ${
-                    isRecording
-                      ? 'bg-red-50 hover:bg-red-100'
-                      : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <FaMicrophone className={`text-lg ${isRecording ? 'text-red-600' : 'text-gray-600'}`} />
-                  <span className={`text-sm font-medium uppercase ${isRecording ? 'text-red-600' : 'text-gray-700'}`}>
-                    {isRecording ? `Stop Recording (${formatRecordingTime(recordingTime)})` : 'Record Audio'}
-                  </span>
-                </button>
-              </div>
-            </div>
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={CHAT_MEDIA_ACCEPT}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <ChatMediaPanel
+                mediaUploading={mediaUploading}
+                onChooseFromDevice={handleChooseFromDevice}
+                onTakePhoto={handleTakePhoto}
+              />
+            </>
           )}
 
           {/* Emoji Picker */}
           {showEmojiPicker && activeTab === 'smiles' && (
             <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 max-h-48 overflow-y-auto">
-              <div className="grid grid-cols-8 gap-2">
+              <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
                 {commonEmojis.map((emoji, index) => (
                   <button
                     key={index}
@@ -1872,52 +1815,44 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
             </div>
           )}
 
-          {/* Input Field */}
-          <div className="px-3 sm:px-4 py-3 sm:py-4 relative">
-            <div className="flex items-center gap-2 min-w-0">
-              <input
-                type="text"
-                value={message}
-                onChange={(e) => {
-                  setMessage(e.target.value);
-                  // Emit typing event
-                  if (socketRef.current && socketRef.current.connected && remoteUserId) {
-                    socketRef.current.emit('typing', {
+          <ChatMessageComposer
+            message={message}
+            onMessageChange={(e) => {
+              setMessage(e.target.value);
+              if (socketRef.current && socketRef.current.connected && remoteUserId) {
+                socketRef.current.emit('typing', {
+                  userId: String(userId),
+                  remoteUserId: String(remoteUserId),
+                });
+
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
+
+                typingTimeoutRef.current = setTimeout(() => {
+                  if (socketRef.current && socketRef.current.connected) {
+                    socketRef.current.emit('stopped-typing', {
                       userId: String(userId),
                       remoteUserId: String(remoteUserId),
                     });
-                    
-                    // Clear existing timeout
-                    if (typingTimeoutRef.current) {
-                      clearTimeout(typingTimeoutRef.current);
-                    }
-                    
-                    // Emit stopped typing after 2 seconds of inactivity
-                    typingTimeoutRef.current = setTimeout(() => {
-                      if (socketRef.current && socketRef.current.connected) {
-                        socketRef.current.emit('stopped-typing', {
-                          userId: String(userId),
-                          remoteUserId: String(remoteUserId),
-                        });
-                      }
-                    }, 2000);
                   }
-                }}
-                onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
-                className="flex-1 min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
-              />
-              
-              <button
-                type="button"
-                onClick={() => sendMessageWithContent(message, 'text')}
-                disabled={!message.trim() && !selectedFile}
-                className="bg-green-600 text-white px-4 sm:px-8 py-2.5 sm:py-3 rounded-lg font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 text-sm sm:text-base"
-              >
-                SEND
-              </button>
-            </div>
-          </div>
+                }, 2000);
+              }
+            }}
+            onKeyDown={handleKeyPress}
+            onSend={sendMessage}
+            isRecording={isRecording}
+            isStarting={isStarting}
+            isVoiceActive={isVoiceActive}
+            recordingTime={recordingTime}
+            voiceSlideCancel={voiceSlideCancel}
+            voiceSupported={voiceSupported}
+            mediaUploading={mediaUploading}
+            onVoiceTapStart={startLockedRecording}
+            onVoiceHoldMove={onHoldMove}
+            onVoiceSendTap={sendRecording}
+            onVoiceCancelTap={cancelRecording}
+          />
         </div>
       </div>
     );
@@ -2054,6 +1989,7 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
               }
 
               const isEmailMsg = msg.messageType === 'email';
+              const isVoiceMsg = msg.messageType === 'voice' && (msg.mediaUrl || msg.media_url);
 
               return (
                 <div
@@ -2070,11 +2006,13 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
                     />
                   ) : (
                   <div
-                    className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                      isOwn
-                        ? 'bg-white text-black'
-                        : 'bg-white text-black'
-                    }`}
+                    className={`max-w-[85%] rounded-2xl shadow-sm sm:max-w-[70%] ${
+                      isVoiceMsg
+                        ? isOwn
+                          ? 'bg-[#DCF8C6] px-2 py-2'
+                          : 'bg-white px-2 py-2'
+                        : 'bg-white px-4 py-2'
+                    } text-black`}
                   >
                     {msg.messageType === 'image' && (msg.mediaUrl || msg.media_url) ? (
                       <div className="mt-1">
@@ -2161,29 +2099,11 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
                             <p className="text-sm mt-2">{displayText}</p>
                           )}
                       </div>
-                    ) : msg.messageType === 'voice' && (msg.mediaUrl || msg.media_url) ? (
-                      <div style={{ padding: 0, margin: 0 }}>
-                        <audio 
-                          src={msg.mediaUrl || msg.media_url} 
-                          controls 
-                          className="w-full min-w-0 max-w-full"
-                          style={{ backgroundColor: 'transparent', padding: 0, margin: 0 }}
-                          preload="metadata"
-                          onError={(e) => {
-                            console.error('Audio load error:', msg.mediaUrl || msg.media_url);
-                            e.target.style.display = 'none';
-                            const errorDiv = document.createElement('div');
-                            errorDiv.className = 'text-sm text-red-500 p-2';
-                            errorDiv.textContent = 'Failed to load audio';
-                            e.target.parentElement.appendChild(errorDiv);
-                          }}
-                        />
-                        {displayText &&
-                          displayText !== '[Voice]' &&
-                          displayText !== '[voice]' && (
-                            <p className="text-sm">{displayText}</p>
-                          )}
-                      </div>
+                    ) : isVoiceMsg ? (
+                      <ChatVoiceMessageBubble
+                        src={msg.mediaUrl || msg.media_url}
+                        isOwn={isOwn}
+                      />
                     ) : (
                       <p className="text-sm">{displayText}</p>
                     )}
@@ -2217,26 +2137,25 @@ const AgoraChatComponent = ({ userId, remoteUserId, onClose, embedded = false, o
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
-        <div className="border-t border-gray-200 p-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type a message..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!message.trim()}
-              className="bg-gradient-nex text-white px-4 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <FaPaperPlane />
-            </button>
-          </div>
-        </div>
+        <ChatMessageComposer
+          message={message}
+          onMessageChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyPress}
+          onSend={sendMessage}
+          placeholder="Type a message..."
+          textareaClassName="text-base"
+          isRecording={isRecording}
+          isStarting={isStarting}
+          isVoiceActive={isVoiceActive}
+          recordingTime={recordingTime}
+          voiceSlideCancel={voiceSlideCancel}
+          voiceSupported={voiceSupported}
+          mediaUploading={mediaUploading}
+          onVoiceTapStart={startLockedRecording}
+          onVoiceHoldMove={onHoldMove}
+          onVoiceSendTap={sendRecording}
+          onVoiceCancelTap={cancelRecording}
+        />
       </div>
     </div>
     </>

@@ -156,8 +156,8 @@ export default function IncomingCallManager() {
   return (
     <>
       <audio ref={ringtoneRef} preload="auto" className="hidden" aria-hidden />
-      <div className="fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-center justify-center backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4">
+      <div className="fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-end sm:items-center justify-center backdrop-blur-sm p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
+        <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full mx-0 sm:mx-4 pt-[max(1.5rem,env(safe-area-inset-top))]">
           <div className="text-center mb-6">
             {photo ? (
               <div className="w-24 h-24 rounded-full overflow-hidden mx-auto mb-4 border-4 border-teal-400 shadow-lg">

@@ -4,7 +4,8 @@ import { Capacitor } from '@capacitor/core';
 export function buildSendLoginLinkPayload(email) {
   const trimmed = typeof email === 'string' ? email.trim() : email;
   const body = { email: trimmed };
-  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+  // Native Capacitor app → email link opens the app (com.vantagedating.app://…), not Safari.
+  if (Capacitor.isNativePlatform()) {
     body.linkDelivery = 'ios-native';
   }
   return body;

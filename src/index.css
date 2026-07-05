@@ -52,6 +52,18 @@ body {
   --vh: 1vh;
 }
 
+/*
+ * iOS Safari / WKWebView auto-zooms when a focused input has font-size < 16px.
+ * Keep 16px on form fields for mobile/tablet so typing does not zoom the page.
+ */
+@media (max-width: 1023px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='button']):not([type='submit']):not([type='reset']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Prevent layout shift when modals open */
 body.modal-open {
   overflow: hidden;

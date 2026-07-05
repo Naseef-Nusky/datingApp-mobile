@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
+import { useCreditsSync } from '../hooks/useCreditsSync';
 import { useNavigate } from 'react-router-dom';
 
 const QuickPresentsModal = ({ isOpen, onClose, receiverId, receiverPool = [] }) => {
-  const { handleInsufficientCredits, isInsufficientCreditsError } = useInsufficientCreditsHandler();
+  const { user } = useAuth();
+  const { syncCreditsAfterAction } = useCreditsSync();
+  const { handleInsufficientCredits, handleInsufficientCreditsError } = useInsufficientCreditsHandler();
   const navigate = useNavigate();
 
   const [receiver, setReceiver] = useState(null);
@@ -139,31 +143,45 @@ const QuickPresentsModal = ({ isOpen, onClose, receiverId, receiverPool = [] }) 
 
   const handleSend = async (targetReceiverId, gift) => {
     if (!targetReceiverId || !gift?.id) return;
+
+    const requiredCredits = Number(gift?.creditCost) || 0;
+    const balance = Number(user?.credits) || 0;
+    if (requiredCredits > 0 && balance < requiredCredits) {
+      const currentPath = window.location.pathname + window.location.search;
+      const joiner = currentPath.includes('?') ? '&' : '?';
+      handleInsufficientCredits({
+        requiredCredits,
+        balance,
+        returnPath: `${currentPath}${joiner}openQuickPresents=1&presentReceiverId=${encodeURIComponent(
+          String(targetReceiverId),
+        )}`,
+      });
+      return;
+    }
+
     setSendingId(`${targetReceiverId}-${gift.id}`);
     try {
-      await axios.post('/api/gifts/send', {
+      const response = await axios.post('/api/gifts/send', {
         receiverId: targetReceiverId,
         giftId: gift.id,
         message: null,
       });
+      await syncCreditsAfterAction(response.data);
       alert('Your present has been sent!');
       onClose?.();
     } catch (error) {
-      const msg = error.response?.data?.message;
-      if (isInsufficientCreditsError(error) || msg === 'Insufficient credits') {
-        const requiredCredits = Number(gift?.creditCost) || 0;
-        const currentPath = window.location.pathname + window.location.search;
-        const joiner = currentPath.includes('?') ? '&' : '?';
-        const returnPath = `${currentPath}${joiner}openQuickPresents=1&presentReceiverId=${encodeURIComponent(
-          String(targetReceiverId)
-        )}`;
-
-        handleInsufficientCredits({
+      const currentPath = window.location.pathname + window.location.search;
+      const joiner = currentPath.includes('?') ? '&' : '?';
+      const returnPath = `${currentPath}${joiner}openQuickPresents=1&presentReceiverId=${encodeURIComponent(
+        String(targetReceiverId),
+      )}`;
+      if (
+        !handleInsufficientCreditsError(error, {
           requiredCredits,
           returnPath,
-        });
-      } else {
-        alert(msg || 'Failed to send present');
+        })
+      ) {
+        alert(error.response?.data?.message || 'Failed to send present');
       }
     } finally {
       setSendingId(null);
@@ -174,11 +192,11 @@ const QuickPresentsModal = ({ isOpen, onClose, receiverId, receiverPool = [] }) 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-2 sm:px-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-0 sm:px-4 pb-[env(safe-area-inset-bottom)]"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl max-h-[calc(90*var(--vh))] overflow-hidden flex flex-col"
+        className="relative w-full max-w-4xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[calc(90*var(--vh)-env(safe-area-inset-bottom,0px))] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

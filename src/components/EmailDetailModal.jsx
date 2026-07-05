@@ -3,12 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { FaTimes, FaEnvelope, FaUser, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import axios from 'axios';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
+import { useCreditsSync } from '../hooks/useCreditsSync';
+import { useServiceAccess } from '../hooks/useServiceAccess';
+import {
+  EMAIL_COMPOSER_MODAL_OVERLAY,
+  EMAIL_DETAIL_MODAL_PANEL,
+  EMAIL_DETAIL_HEADER,
+  EMAIL_DETAIL_SCROLL,
+  EMAIL_DETAIL_CONTENT,
+  EMAIL_DETAIL_REPLY_FOOTER,
+  EMAIL_COMPOSER_SEND_BTN,
+  EMAIL_COMPOSER_AVATAR,
+  EMAIL_COMPOSER_AVATAR_FALLBACK,
+} from '../utils/emailComposerLayout';
 
 const VIDEO_THUMBNAIL_URL = 'https://nexdatingmedia.lon1.digitaloceanspaces.com/Icons/video_thumbnail.png';
 
 const EmailDetailModal = ({ isOpen, onClose, email, onReply, user }) => {
   const navigate = useNavigate();
   const { handleInsufficientCreditsError } = useInsufficientCreditsHandler();
+  const { syncCreditsAfterAction } = useCreditsSync();
+  const { ensureCanUnlockAttachment } = useServiceAccess();
   const [emailState, setEmailState] = useState(email);
   const [unlockingIndex, setUnlockingIndex] = useState(null);
   const [viewAttachmentIndex, setViewAttachmentIndex] = useState(null);
@@ -76,9 +91,14 @@ const EmailDetailModal = ({ isOpen, onClose, email, onReply, user }) => {
   const isReceiver = currentEmail.receiver === user.id;
 
   const handleUnlockAttachment = async (index) => {
+    const attachment = attachments[index];
+    if (!attachment) return;
+    if (!(await ensureCanUnlockAttachment(attachment.type))) return;
+
     setUnlockingIndex(index);
     try {
       const { data } = await axios.post(`/api/messages/emails/${currentEmail.id}/unlock-attachment`, { index });
+      await syncCreditsAfterAction(data);
       setEmailState((prev) => {
         const next = { ...prev };
         const att = [...(next.attachments || [])];
@@ -98,159 +118,91 @@ const EmailDetailModal = ({ isOpen, onClose, email, onReply, user }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pt-[env(safe-area-inset-top,0px)]"
+      className={EMAIL_COMPOSER_MODAL_OVERLAY}
       onClick={onClose}
-      style={{
-        background: 'rgba(0, 0, 0, 0.5)',
-      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="email-detail-title"
     >
       <div
-        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-2xl w-full h-[100dvh] sm:h-auto sm:max-h-[min(90dvh,calc(90*var(--vh,1vh)))] flex flex-col overflow-hidden relative min-h-0 pb-[env(safe-area-inset-bottom,0px)]"
+        className={EMAIL_DETAIL_MODAL_PANEL}
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'linear-gradient(to bottom, #fff 0%, #fff 25%, #fff 100%)',
-        }}
       >
-        {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 text-gray-500 hover:text-gray-700 bg-white rounded-full p-2 shadow-md transition"
+          className="absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] right-3 sm:top-4 sm:right-4 z-20 text-gray-600 hover:text-gray-800 bg-white/90 rounded-full p-2 shadow-md transition"
           aria-label="Close"
         >
-          <FaTimes size={20} />
+          <FaTimes size={18} />
         </button>
 
-        {/* Header Section with Decorative Background */}
-        <div className="relative flex-shrink-0 h-36 sm:h-48 md:h-56 overflow-hidden rounded-t-2xl sm:rounded-t-2xl">
-          {/* Decorative Background - Sunset Scene */}
-          <div 
+        {/* Header — compact decorative banner */}
+        <div className={EMAIL_DETAIL_HEADER}>
+          <div
             className="absolute inset-0"
             style={{
               background: 'linear-gradient(to bottom, #ff8c42 0%, #ffa366 30%, #ffb380 60%, #ffc299 100%)',
             }}
           >
-            {/* Sun - Large orange disk */}
-            <div 
-              className="absolute top-4 right-6 w-32 h-32 rounded-full"
+            <div
+              className="absolute top-2 right-4 sm:top-4 sm:right-6 w-20 h-20 sm:w-32 sm:h-32 rounded-full"
               style={{
                 background: 'radial-gradient(circle, #ff8c42 0%, #ff6b35 100%)',
-                boxShadow: '0 0 60px rgba(255, 140, 66, 0.6)',
+                boxShadow: '0 0 40px rgba(255, 140, 66, 0.5)',
               }}
             />
-            
-            {/* Trees Silhouette - Multiple trees */}
-            <div className="absolute bottom-0 left-0 right-0 h-40">
-              {/* Left side trees */}
-              <div 
-                className="absolute bottom-0 left-2 w-20 h-32 rounded-t-full opacity-80"
-                style={{ background: '#1a3009' }}
-              />
-              <div 
-                className="absolute bottom-0 left-16 w-16 h-28 rounded-t-full opacity-90"
-                style={{ background: '#2d5016' }}
-              />
-              <div 
-                className="absolute bottom-0 left-28 w-18 h-30 rounded-t-full opacity-85"
-                style={{ background: '#1a3009' }}
-              />
-              
-              {/* Right side trees */}
-              <div 
-                className="absolute bottom-0 right-20 w-16 h-26 rounded-t-full opacity-80"
-                style={{ background: '#2d5016' }}
-              />
-              <div 
-                className="absolute bottom-0 right-4 w-14 h-24 rounded-t-full opacity-90"
-                style={{ background: '#1a3009' }}
-              />
-            </div>
-
-            {/* Lamppost - Right side */}
-            <div className="absolute bottom-0 right-16">
-              <div 
-                className="w-1.5 h-24"
-                style={{ background: '#3a3a3a' }}
-              />
-              <div 
-                className="absolute top-0 right-0 w-6 h-6 rounded-full -translate-x-1/2"
-                style={{ 
-                  background: '#ffd700',
-                  boxShadow: '0 0 15px rgba(255, 215, 0, 0.9)',
-                }}
-              />
-            </div>
-
-            {/* Couple on Bench - Center left */}
-            <div className="absolute bottom-12 left-1/4">
-              {/* Bench */}
-              <div 
-                className="w-20 h-3 rounded"
-                style={{ background: '#4a4a4a' }}
-              />
-              {/* Person 1 */}
-              <div 
-                className="absolute -top-4 left-2 w-4 h-4 rounded-full"
-                style={{ background: '#2d2d2d' }}
-              />
-              {/* Person 2 */}
-              <div 
-                className="absolute -top-4 right-2 w-4 h-4 rounded-full"
-                style={{ background: '#2d2d2d' }}
-              />
+            <div className="absolute bottom-0 left-0 right-0 h-16 sm:h-40">
+              <div className="absolute bottom-0 left-2 w-12 sm:w-20 h-20 sm:h-32 rounded-t-full opacity-80" style={{ background: '#1a3009' }} />
+              <div className="absolute bottom-0 right-4 w-10 sm:w-14 h-16 sm:h-24 rounded-t-full opacity-90" style={{ background: '#1a3009' }} />
             </div>
           </div>
 
-          {/* Profile Picture and Name Overlay */}
-          <div className="relative z-10 flex flex-col items-center justify-center h-full pt-6">
-            <div className="mb-4">
-              {senderImage ? (
-                <img
-                  src={senderImage}
-                  alt={senderName}
-                  className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-xl"
-                />
-              ) : (
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-pink-200 to-purple-200 flex items-center justify-center border-4 border-white shadow-xl">
-                  <span className="text-white font-semibold text-3xl">
-                    {senderName.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-            </div>
-            <p className="text-white font-semibold text-base sm:text-xl drop-shadow-2xl px-4 text-center break-words">
+          <div className="relative z-10 flex flex-col items-center justify-center h-full px-3 pt-2 pb-3">
+            {senderImage ? (
+              <img src={senderImage} alt={senderName} className={`${EMAIL_COMPOSER_AVATAR} mb-1.5 sm:mb-3 border-white`} />
+            ) : (
+              <div className={`${EMAIL_COMPOSER_AVATAR_FALLBACK} mb-1.5 sm:mb-3`}>
+                <span className="text-white font-semibold text-lg sm:text-2xl">
+                  {senderName.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <p
+              id="email-detail-title"
+              className="text-white font-semibold text-sm sm:text-lg drop-shadow-lg px-10 text-center break-words line-clamp-2"
+            >
               Email from {senderName}
             </p>
           </div>
         </div>
 
-        {/* Content Section - scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-6 bg-white">
-          {/* Subject Line */}
-          <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4 break-words pr-10">
-            {subject}
-          </h3>
+        {/* Scrollable content + reply (no dead space on short emails) */}
+        <div className={EMAIL_DETAIL_SCROLL}>
+          <div className={EMAIL_DETAIL_CONTENT}>
+            <h3 className="text-base sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3 break-words pr-8">
+              {subject}
+            </h3>
 
-          {/* Message Body */}
-          <div className="mb-6">
-            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {messageBody || 'No message content'}
-            </p>
-            {isReceiver && senderId && (
-              <button
-                type="button"
-                onClick={() => { navigate(`/profile/${senderId}`); onClose(); }}
-                className="mt-2 text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm font-medium"
-              >
-                <FaUser className="text-xs" /> Open profile
-              </button>
-            )}
-          </div>
+            <div className="mb-4 sm:mb-5">
+              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap text-base">
+                {messageBody || 'No message content'}
+              </p>
+              {isReceiver && senderId && (
+                <button
+                  type="button"
+                  onClick={() => { navigate(`/profile/${senderId}`); onClose(); }}
+                  className="mt-3 text-blue-600 hover:text-blue-800 inline-flex items-center gap-1.5 text-sm font-medium"
+                >
+                  <FaUser className="text-xs shrink-0" /> Open profile
+                </button>
+              )}
+            </div>
 
-          {/* Attached photos / videos / voice (locked: thumb + lock; unlocked: clear or player) */}
             {attachments.length > 0 && (
-            <div className="mb-6">
-              <p className="text-sm font-semibold text-gray-700 mb-2">{attachmentsSectionTitle}</p>
-              <div className="flex flex-wrap gap-3">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-2">{attachmentsSectionTitle}</p>
+                <div className="flex flex-wrap gap-3">
                 {attachments.map((att, idx) => (
                   <div key={idx} className="relative">
                     {att.locked ? (
@@ -325,21 +277,20 @@ const EmailDetailModal = ({ isOpen, onClose, email, onReply, user }) => {
             </div>
           )}
 
-        </div>
+          </div>
 
-        {/* Reply Button - fixed at bottom */}
-        <div className="flex-shrink-0 p-3 sm:p-4 border-t border-gray-100 bg-white">
-          <button
-            onClick={() => {
-              if (onReply) {
-                onReply(currentEmail);
-              }
-            }}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 sm:py-4 px-6 rounded-lg flex items-center justify-center gap-3 transition-colors shadow-lg text-sm sm:text-base"
-          >
-            <FaEnvelope className="text-lg sm:text-xl shrink-0" />
-            <span>REPLY</span>
-          </button>
+          <div className={EMAIL_DETAIL_REPLY_FOOTER}>
+            <button
+              type="button"
+              onClick={() => {
+                if (onReply) onReply(currentEmail);
+              }}
+              className={EMAIL_COMPOSER_SEND_BTN}
+            >
+              <FaEnvelope className="text-base sm:text-lg shrink-0" />
+              <span>REPLY</span>
+            </button>
+          </div>
         </div>
       </div>
 

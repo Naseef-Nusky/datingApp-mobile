@@ -1,9 +1,11 @@
 /**
  * Whole-page translation using Google Cloud Translation API.
  * On load, when language is not English: collect text from DOM elements,
- * POST to /api/translate, replace with translations.
+ * POST to /api/mobile/translate, replace with translations.
  * Use with: save language in localStorage → reload → this runs after paint.
  */
+
+import { mobileApiUrl } from '../api/mobileApi';
 
 const SELECTORS =
   'h1, h2, h3, h4, h5, h6, p, a, span, button, li, label, td, th, option, div';
@@ -38,9 +40,8 @@ export async function translatePage(targetLang) {
   const texts = elements.map((el) => el.innerText.trim()).filter(Boolean);
   if (texts.length === 0) return;
 
-  const apiUrl = import.meta.env.VITE_API_URL || '';
   try {
-    const res = await fetch(`${apiUrl}/api/translate`, {
+    const res = await fetch(mobileApiUrl('/api/translate'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts, target: targetLang }),

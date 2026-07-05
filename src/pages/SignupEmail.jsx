@@ -7,6 +7,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { buildSendLoginLinkPayload } from '../utils/sendLoginLinkPayload';
 import { authorizeAppleSignIn } from '../utils/nativeAppleSignIn';
+import { mobileApiUrl } from '../api/mobileApi';
 
 /**
  * First registration page: email-based signup.
@@ -104,7 +105,7 @@ export default function SignupEmail() {
           {/* Continue with Google / Apple (Guideline 4.8) */}
           <div className="space-y-3 mb-4">
             <a
-              href={`${import.meta.env.VITE_API_URL || ''}/api/auth/google`}
+              href={mobileApiUrl('/api/auth/google')}
               className="flex items-center justify-center gap-3 w-full bg-white border border-gray-300 text-gray-800 font-medium py-3.5 px-6 rounded-xl hover:bg-gray-50 transition no-underline"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">

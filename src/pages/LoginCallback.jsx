@@ -3,14 +3,10 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { mobileApiUrl } from '../api/mobileApi';
 
-const apiBase = () => (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace(/\/$/, '');
-
-const verifyLoginLink = (token) => {
-  const base = apiBase();
-  const url = base ? `${base}/api/auth/verify-login-link` : '/api/auth/verify-login-link';
-  return axios.post(url, { token }, { timeout: 20000 });
-};
+const verifyLoginLink = (token) =>
+  axios.post(mobileApiUrl('/api/auth/verify-login-link'), { token }, { timeout: 20000 });
 
 /**
  * Handles magic link click from email: ?token=xxx → verify with API, store token, redirect.

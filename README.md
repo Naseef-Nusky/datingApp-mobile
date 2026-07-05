@@ -41,10 +41,29 @@ npm run cap:ios   # open Xcode → Archive → TestFlight
 
 | Path | Purpose |
 |------|---------|
-| `src/` | React UI (copy of frontend — customize for mobile here) |
-| `src/mobile/` | Add new mobile-only screens and components here |
+| `src/routes/mobileRoutes.jsx` | **All mobile routes** — add new routes here |
+| `src/app/MobileAppShell.jsx` | Mobile shell (header, calls, inactivity) |
+| `src/mobile/` | Mobile-only pages and components |
+| `src/pages/` | Shared screens (Dashboard, Inbox, etc.) |
 | `ios/` | Xcode / Capacitor native project |
 | `capacitor.config.json` | App ID: `com.vantagedating.app` |
+
+## API
+
+Mobile app calls **`/api/mobile/*`** on the backend (web uses `/api/*`).
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/mobile/health` | Health check |
+| `GET /api/mobile/config` | Mobile feature flags |
+| `GET /api/mobile/auth/me` | Current user (same as web) |
+
+All axios requests are rewritten automatically in `src/main.jsx`.
+
+- `/` — welcome + login hero
+- `/dashboard`, `/inbox`, `/profile/:id`, `/vip`, … — app screens
+- `/terms`, `/privacy`, `/help` — legal & help
+- Web SEO paths (`/mature-online-dating`, etc.) redirect to `/` or `/help`
 
 ## Notes
 

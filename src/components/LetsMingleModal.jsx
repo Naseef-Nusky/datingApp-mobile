@@ -3,11 +3,16 @@ import { FaTimes, FaEdit } from 'react-icons/fa';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
+import { useServiceAccess } from '../hooks/useServiceAccess';
+import { useCreditsSync } from '../hooks/useCreditsSync';
 import { CONTACT_INFO_WARNING, hasBlockedContactInfo } from '../utils/contactInfoBlock';
+import AutoResizeTextarea from './AutoResizeTextarea';
 
 const LetsMingleModal = ({ isOpen, onClose, onSuccess }) => {
-  const { user, fetchUser } = useAuth();
+  const { user } = useAuth();
+  const { syncCreditsAfterAction } = useCreditsSync();
   const { handleInsufficientCreditsError } = useInsufficientCreditsHandler();
+  const { ensureCanSendMingle } = useServiceAccess();
   const [gender, setGender] = useState('female');
   const [ageMin, setAgeMin] = useState(20);
   const [ageMax, setAgeMax] = useState(35);
@@ -67,6 +72,8 @@ const LetsMingleModal = ({ isOpen, onClose, onSuccess }) => {
       return;
     }
 
+    if (!(await ensureCanSendMingle())) return;
+
     setSending(true);
     setError('');
 
@@ -84,7 +91,7 @@ const LetsMingleModal = ({ isOpen, onClose, onSuccess }) => {
 
       if (response.data && response.data.success) {
         console.log('Mingle successful, matched profiles:', response.data.matchedProfiles);
-        if (fetchUser) fetchUser();
+        await syncCreditsAfterAction(response.data);
         onSuccess(response.data.matchedProfiles || []);
         // Reset form
         setMessage('');
@@ -242,12 +249,13 @@ const LetsMingleModal = ({ isOpen, onClose, onSuccess }) => {
 
           {/* Message Input */}
           <div className="flex-1 min-h-0 flex flex-col">
-            <textarea
+            <AutoResizeTextarea
+              minRows={3}
+              maxRows={8}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Example message: Hey there! Ready to find someone who's as serious about love as they are about having fun together!"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none flex-1 text-sm"
-              style={{ minHeight: '80px' }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-base sm:text-sm"
             />
           </div>
 

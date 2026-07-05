@@ -7,6 +7,7 @@ import { useLanguage } from '../context/LanguageContext';
 import PasswordInput from '../components/PasswordInput';
 import Logo from '../components/Logo';
 import { authorizeAppleSignIn } from '../utils/nativeAppleSignIn';
+import { mobileApiUrl } from '../api/mobileApi';
 
 const Login = () => {
   const [searchParams] = useSearchParams();
@@ -90,7 +91,7 @@ const Login = () => {
 
         <div className="mb-4 space-y-3">
           <a
-            href={`${import.meta.env.VITE_API_URL || ''}/api/auth/google`}
+            href={mobileApiUrl('/api/auth/google')}
             className="flex items-center justify-center gap-3 w-full bg-white border border-gray-300 text-gray-800 font-medium py-3 px-4 rounded-lg hover:bg-gray-50 transition no-underline"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">

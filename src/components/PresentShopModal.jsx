@@ -3,10 +3,14 @@ import axios from 'axios';
 import { FaTimes, FaGift } from 'react-icons/fa';
 import { useInsufficientCreditsHandler } from '../hooks/useInsufficientCreditsHandler';
 import { useAuth } from '../context/AuthContext';
+import { useCreditsSync } from '../hooks/useCreditsSync';
+import { useServiceAccess } from '../hooks/useServiceAccess';
 
 const PresentShopModal = ({ isOpen, onClose, receiver, initialStep = 'shop', initialCartItems = [] }) => {
   const { handleInsufficientCredits, isInsufficientCreditsError } = useInsufficientCreditsHandler();
-  const { user, fetchUser } = useAuth();
+  const { user } = useAuth();
+  const { syncCreditsAfterAction } = useCreditsSync();
+  const { ensureCanAffordCredits } = useServiceAccess();
   const [gifts, setGifts] = useState([]);
   const [presentCategories, setPresentCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -144,16 +148,19 @@ const PresentShopModal = ({ isOpen, onClose, receiver, initialStep = 'shop', ini
 
   const handleCheckout = async () => {
     if (!receiver || !receiverUserId || cart.length === 0) return;
+    if (!(await ensureCanAffordCredits(totalCredits))) return;
     setCheckingOut(true);
     try {
+      let lastResponse = null;
       for (const item of cart) {
-        await axios.post('/api/gifts/send', {
+        const res = await axios.post('/api/gifts/send', {
           receiverId: receiverUserId,
           giftId: item.id,
           message: null,
         });
+        lastResponse = res.data;
       }
-      await fetchUser();
+      await syncCreditsAfterAction(lastResponse);
       alert('Your presents have been sent!');
       setCart([]);
       setStep('shop');
@@ -192,10 +199,10 @@ const PresentShopModal = ({ isOpen, onClose, receiver, initialStep = 'shop', ini
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-2 sm:px-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[calc(95*var(--vh))] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-0 sm:px-4 pb-[env(safe-area-inset-bottom)]">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-5xl w-full max-h-[calc(95*var(--vh)-env(safe-area-inset-bottom,0px))] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-4">
           <div>
             <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">
               {step === 'checkout' ? 'Checkout' : 'Present Shop'}

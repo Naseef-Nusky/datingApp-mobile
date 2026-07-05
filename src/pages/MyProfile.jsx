@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRefillModal } from '../context/RefillModalContext';
 import { useUpgradeModal } from '../context/UpgradeModalContext';
@@ -11,17 +11,22 @@ import { isAllowedProfileImageFile, prepareProfileImageForUpload, PROFILE_IMAGE_
 import PhotoViewModal from '../components/PhotoViewModal';
 import ContactsSidebar from '../components/ContactsSidebar';
 import { interestIcons } from '../utils/interestIcons';
+import { getDisplayZodiac } from '../utils/zodiac';
+import AutoResizeTextarea from '../components/AutoResizeTextarea';
 import {
   mapChatRequestFromApi,
   enrichChatRequestsWithProfiles,
   acceptChatRequestAndNavigate,
 } from '../utils/chatRequests';
+import useCreditBalance from '../hooks/useCreditBalance';
 
 const MyProfile = () => {
-  const { user, fetchUser } = useAuth();
+  const { user, applyAuthMeResponse, refreshCreditBalance } = useAuth();
+  const { credits: liveCredits, refreshCredits } = useCreditBalance({ refreshOnMount: true });
   const { openRefillModal } = useRefillModal();
   const { openUpgradeModal } = useUpgradeModal();
   const navigate = useNavigate();
+  const location = useLocation();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
@@ -96,6 +101,11 @@ const MyProfile = () => {
     fetchChatRequests();
   }, []);
 
+  useEffect(() => {
+    if (location.pathname !== '/profile/me') return;
+    refreshCredits();
+  }, [location.pathname, refreshCredits]);
+
   // Real-time: My Contacts sidebar updates on new message, gift, or contact change
   useEffect(() => {
     if (!user?.id) return;
@@ -151,7 +161,8 @@ const MyProfile = () => {
   const fetchProfile = async () => {
     try {
       const response = await axios.get('/api/auth/me');
-      const loaded = response.data.profile;
+      const loaded = applyAuthMeResponse(response.data);
+      await refreshCreditBalance();
       if (!loaded) {
         navigate('/complete-profile', { replace: true });
         return;
@@ -927,10 +938,10 @@ const MyProfile = () => {
                 {!isStreamer && (
                   <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 lg:bottom-4 lg:right-6 z-10">
                     <button
-                      onClick={openRefillModal}
+                      onClick={() => openRefillModal({ returnPath: '/profile/me' })}
                       className="bg-black bg-opacity-70 text-white px-3 py-1 sm:px-6 sm:py-2 text-xs sm:text-sm rounded hover:bg-opacity-90 transition font-semibold"
                     >
-                      {user?.credits ?? 0} CREDITS - REFILL
+                      {liveCredits} CREDITS - REFILL
                     </button>
                   </div>
                 )}
@@ -1345,7 +1356,7 @@ const MyProfile = () => {
                   </button>
                 </div>
                 <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-700">
-                  <p>Zodiac sign: {profile.lifestyle?.zodiac || 'No answer'}</p>
+                  <p>Zodiac sign: {getDisplayZodiac(profile.lifestyle) || 'No answer'}</p>
                   <p>Live in: {profile.location?.city || 'No answer'}, {profile.location?.country || ''}</p>
                   <p>Work as: {profile.lifestyle?.work || 'No answer'}</p>
                   <p>Education: {profile.lifestyle?.education || 'No answer'}</p>
@@ -1867,10 +1878,12 @@ const MyProfile = () => {
 
               {/* Description Text Area */}
               <div className="mb-4">
-                <textarea
+                <AutoResizeTextarea
+                  minRows={3}
+                  maxRows={12}
                   value={lookingForDescription}
                   onChange={(e) => setLookingForDescription(e.target.value)}
-                  className="w-full h-32 p-4 border-2 border-blue-300 rounded-lg focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full p-4 border-2 border-blue-300 rounded-lg focus:outline-none focus:border-blue-500 text-base"
                   placeholder="Loyal caring loving"
                 />
               </div>
@@ -1978,10 +1991,12 @@ const MyProfile = () => {
               </div>
 
               {/* Text Area */}
-              <textarea
+              <AutoResizeTextarea
+                minRows={4}
+                maxRows={14}
                 value={bioText}
                 onChange={(e) => setBioText(e.target.value)}
-                className="w-full h-40 p-4 border-2 border-blue-300 rounded-lg focus:outline-none focus:border-blue-500 resize-none"
+                className="w-full p-4 border-2 border-blue-300 rounded-lg focus:outline-none focus:border-blue-500 text-base"
                 placeholder="To meet someone to have a loving relationship"
               />
 

@@ -1,8 +1,10 @@
+import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useRefillModal } from '../context/RefillModalContext';
-import { useUpgradeModal } from '../context/UpgradeModalContext';
+import { useRefillModal } from '../context/CreditsModalsProvider';
+import { useUpgradeModal } from '../context/CreditsModalsProvider';
 import { hasActiveSubscription } from '../utils/subscription';
 import { isInsufficientCreditsError } from '../utils/insufficientCredits';
+import { isCreditsAccessDenied, markCreditsAccessHandled } from '../utils/creditsAccess';
 
 /**
  * Opens upgrade modal when no active subscription, otherwise refill modal.
@@ -12,31 +14,31 @@ export function useInsufficientCreditsHandler() {
   const { openRefillModal } = useRefillModal();
   const { openUpgradeModal } = useUpgradeModal();
 
-  const handleInsufficientCredits = (refillOptions = {}) => {
+  const handleInsufficientCredits = useCallback((refillOptions = {}) => {
     if (hasActiveSubscription(user)) {
       openRefillModal(refillOptions);
     } else {
       openUpgradeModal();
     }
-  };
+  }, [openRefillModal, openUpgradeModal, user]);
 
-  const handleInsufficientCreditsError = (error, refillOptions = {}) => {
-    if (!isInsufficientCreditsError(error)) return false;
-    handleInsufficientCredits(refillOptions);
-    return true;
-  };
-
-  /** API / socket payload: subscription required vs insufficient credits. */
-  const handleCallAccessDenied = (payload = {}) => {
+  const openCreditsAccessModal = useCallback((payload = {}, refillOptions = {}) => {
     const code = String(payload.code || '').toUpperCase();
     if (code === 'SUBSCRIPTION_REQUIRED') {
       openUpgradeModal();
       return true;
     }
     if (code === 'INSUFFICIENT_CREDITS') {
-      openRefillModal({
-        requiredCredits: payload.required ?? payload.costPerMinute,
-        balance: payload.balance,
+      handleInsufficientCredits({
+        requiredCredits:
+          refillOptions.requiredCredits ??
+          payload.required ??
+          payload.costPerMinute ??
+          payload.costPerMessage ??
+          payload.emailCost ??
+          payload.mingleCost,
+        balance: refillOptions.balance ?? payload.balance,
+        returnPath: refillOptions.returnPath,
       });
       return true;
     }
@@ -45,8 +47,14 @@ export function useInsufficientCreditsHandler() {
       payload.message.toLowerCase().includes('insufficient')
     ) {
       handleInsufficientCredits({
-        requiredCredits: payload.required ?? payload.costPerMinute,
-        balance: payload.balance,
+        requiredCredits:
+          refillOptions.requiredCredits ??
+          payload.required ??
+          payload.costPerMinute ??
+          payload.costPerMessage ??
+          payload.emailCost,
+        balance: refillOptions.balance ?? payload.balance,
+        returnPath: refillOptions.returnPath,
       });
       return true;
     }
@@ -58,7 +66,35 @@ export function useInsufficientCreditsHandler() {
       return true;
     }
     return false;
-  };
+  }, [handleInsufficientCredits, openUpgradeModal]);
+
+  const handleCallAccessDenied = useCallback((payload = {}, refillOptions = {}) => {
+    return openCreditsAccessModal(payload, refillOptions);
+  }, [openCreditsAccessModal]);
+
+  const handleInsufficientCreditsError = useCallback((error, refillOptions = {}) => {
+    const payload = error?.response?.data;
+    if (payload && openCreditsAccessModal(payload, refillOptions)) {
+      markCreditsAccessHandled(error);
+      return true;
+    }
+    if (!isInsufficientCreditsError(error) && !isCreditsAccessDenied(payload, error?.response?.status)) {
+      return false;
+    }
+    handleInsufficientCredits({
+      ...refillOptions,
+      requiredCredits:
+        refillOptions.requiredCredits ??
+        payload?.required ??
+        payload?.costPerMessage ??
+        payload?.emailCost ??
+        payload?.costPerMinute ??
+        payload?.mingleCost,
+      balance: refillOptions.balance ?? payload?.balance,
+    });
+    markCreditsAccessHandled(error);
+    return true;
+  }, [handleInsufficientCredits, openCreditsAccessModal]);
 
   return {
     handleInsufficientCredits,

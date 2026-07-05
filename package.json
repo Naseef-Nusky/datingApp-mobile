@@ -12,12 +12,18 @@
     "sync:ios-app-icon": "sips -z 1024 1024 public/apple-touch-icon.png --out ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png",
     "cap:sync": "npm run build && npx cap sync",
     "cap:sync:ios": "npm run sync:ios-app-icon && npm run build && npx cap sync ios",
+    "cap:sync:ios:local": "npm run sync:ios-app-icon && npm run build:simulator && npx cap sync ios",
+    "build:simulator": "node scripts/ensure-simulator-env.mjs && vite build --mode simulator",
     "cap:ios": "npx cap open ios",
-    "cap:run:ios": "npm run sync:ios-app-icon && npm run build && npx cap sync ios && npx cap run ios"
+    "cap:run:ios": "npm run sync:ios-app-icon && npm run build:simulator && npx cap sync ios && npx cap run ios",
+    "cap:run:ios:local": "npm run cap:run:ios",
+    "cap:run:ios:prod": "npm run sync:ios-app-icon && npm run build && npx cap sync ios && npx cap run ios"
   },
   "dependencies": {
     "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capacitor/camera": "^8.2.0",
     "@capacitor/cli": "^8.3.1",
     "@capacitor/core": "^8.3.1",
     "@capacitor/ios": "^8.3.1",

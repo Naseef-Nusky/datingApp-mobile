@@ -12,7 +12,7 @@ const appleSignInInstalled = fs.existsSync(
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiProxyTarget = env.VITE_DEV_PROXY_API || 'http://localhost:5000'
+  const apiProxyTarget = env.VITE_DEV_PROXY_API || 'http://localhost:5001'
 
   return {
     plugins: [react()],

@@ -3,7 +3,6 @@ import PasswordInput from './PasswordInput';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import RegistrationSuccessModal from './RegistrationSuccessModal';
 import ImageCropEditor from './ImageCropEditor';
 import {
   PROFILE_IMAGE_ACCEPT,
@@ -15,16 +14,20 @@ import {
 const REQUIRED_GALLERY_PHOTOS = 2;
 const PHOTO_SLOT_COUNT = 1 + REQUIRED_GALLERY_PHOTOS; // profile + 2 gallery
 
-const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null, onComplete }) => {
+const RegistrationWizard = ({
+  completeProfileOnly = false,
+  initialProfile = null,
+  onComplete,
+  prefilledEmail = '',
+  prefilledFirstName = '',
+}) => {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, fetchUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(completeProfileOnly ? 1 : 0);
   const [loading, setLoading] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [registeredUser, setRegisteredUser] = useState(null);
   const [photoCropSource, setPhotoCropSource] = useState(null);
   const [photoCropTarget, setPhotoCropTarget] = useState(null);
   const [existingPhotos, setExistingPhotos] = useState({ profile: null, gallery: [] });
@@ -106,6 +109,17 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
     }
   };
 
+  // Prefill email and nickname from welcome / create-account flow
+  useEffect(() => {
+    if (completeProfileOnly) return;
+    if (!prefilledEmail && !prefilledFirstName) return;
+    setFormData((prev) => ({
+      ...prev,
+      email: prefilledEmail || prev.email,
+      firstName: prefilledFirstName || prev.firstName,
+    }));
+  }, [completeProfileOnly, prefilledEmail, prefilledFirstName]);
+
   // Prefill form when completing profile (magic-link signup)
   useEffect(() => {
     if (!completeProfileOnly || !initialProfile) return;
@@ -183,17 +197,19 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
   const uploadRegistrationPhotos = async (photos) => {
     const profileFile = photos?.[0];
     const galleryFiles = (photos || []).slice(1).filter(Boolean);
+    const uploadOpts = { maxContentLength: Infinity, maxBodyLength: Infinity };
 
     if (profileFile) {
       const profileFormData = new FormData();
-      profileFormData.append('photo', profileFile);
-      await axios.post('/api/profiles/me/photos', profileFormData);
+      profileFormData.append('photo', profileFile, profileFile.name || 'profile.jpg');
+      await axios.post('/api/profiles/me/photos', profileFormData, uploadOpts);
     }
 
-    for (const file of galleryFiles) {
+    for (let i = 0; i < galleryFiles.length; i += 1) {
+      const file = galleryFiles[i];
       const galleryFormData = new FormData();
-      galleryFormData.append('photo', file);
-      await axios.post('/api/profiles/me/photos/add', galleryFormData);
+      galleryFormData.append('photo', file, file.name || `gallery-${i + 1}.jpg`);
+      await axios.post('/api/profiles/me/photos/add', galleryFormData, uploadOpts);
     }
   };
 
@@ -282,19 +298,20 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
 
   const checkEmailExists = async (email) => {
     if (!email || !email.includes('@')) {
-      return false; // Invalid email format, let validation handle it
+      return { exists: false, registrationComplete: false };
     }
-    
+
     try {
       setCheckingEmail(true);
       setEmailError('');
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const response = await axios.post(`${apiUrl}/api/auth/check-email`, { email });
-      return response.data.exists;
+      const response = await axios.post('/api/auth/check-email', { email });
+      return {
+        exists: !!response.data?.exists,
+        registrationComplete: response.data?.registrationComplete !== false,
+      };
     } catch (error) {
       console.error('Email check error:', error);
-      // If there's an error, don't block the user - let backend handle it during registration
-      return false;
+      return { exists: false, registrationComplete: false };
     } finally {
       setCheckingEmail(false);
     }
@@ -312,11 +329,18 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
           return false;
         }
         
-        // Check if email already exists
-        const emailExists = await checkEmailExists(formData.email);
-        if (emailExists) {
-          setEmailError('This email address is already registered. Please use a different email or log in.');
+        // Check if email already fully registered (incomplete magic-link signups can continue)
+        const emailCheck = await checkEmailExists(formData.email);
+        if (emailCheck.exists && emailCheck.registrationComplete) {
+          setEmailError(
+            'This email is already registered. Please log in instead, or use a different email.'
+          );
           return false;
+        }
+        if (emailCheck.exists && !emailCheck.registrationComplete) {
+          setEmailError(
+            'You already started with this email — continue below to finish your profile, or check your inbox for a login link.'
+          );
         }
         
         return true;
@@ -381,6 +405,60 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
     setError('');
   };
 
+  const showSkipButton = currentStep >= 2 && currentStep < 5;
+
+  const nextButtonLabel = () => {
+    if (loading) return completeProfileOnly ? 'Saving...' : 'Registering...';
+    if (checkingEmail) return 'Checking...';
+    if (currentStep === 5) {
+      return completeProfileOnly ? 'Complete profile' : 'Complete registration';
+    }
+    return 'NEXT';
+  };
+
+  const buildProfilePayload = (age, birthDateIso) => ({
+    firstName: formData.firstName,
+    lastName: formData.lastName || '',
+    age,
+    gender: formData.gender,
+    bio: formData.bio || null,
+    preferences: {
+      lookingFor: formData.seeking,
+      description: formData.idealPartner || '',
+    },
+    interests: formData.interests,
+    lifestyle: birthDateIso ? { birthDate: birthDateIso } : {},
+    location: {
+      city: formData.hometown.split(',')[0]?.trim() || '',
+      country: formData.hometown.split(',')[1]?.trim() || '',
+    },
+  });
+
+  /** Save full profile, upload photos, mark registration complete, then go to dashboard. */
+  const finalizeProfileAndComplete = async (age, birthDateIso) => {
+    if (!registrationPhotosComplete()) {
+      throw new Error('Please add your profile photo and 2 gallery photos to continue');
+    }
+
+    await axios.put('/api/profiles/me', buildProfilePayload(age, birthDateIso));
+
+    const hasNewPhotos = (formData.photos || []).some(Boolean);
+    if (hasNewPhotos) {
+      await uploadRegistrationPhotos(formData.photos);
+    }
+
+    await axios.put('/api/auth/me/registration-complete');
+    await fetchUser();
+  };
+
+  const finishRegistration = async () => {
+    if (completeProfileOnly && onComplete) {
+      onComplete();
+      return;
+    }
+    navigate('/dashboard', { replace: true });
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     setError('');
@@ -388,36 +466,13 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
     try {
       const age = calculateAge();
       const birthDateIso = buildBirthDateIso();
-      const apiUrl = import.meta.env.VITE_API_URL || '';
 
       if (completeProfileOnly) {
-        const profilePayload = {
-          firstName: formData.firstName,
-          lastName: formData.lastName || '',
-          age: age,
-          gender: formData.gender,
-          bio: formData.bio || null,
-          preferences: {
-            lookingFor: formData.seeking,
-            description: formData.idealPartner || '',
-          },
-          interests: formData.interests,
-          lifestyle: birthDateIso ? { birthDate: birthDateIso } : {},
-          location: {
-            city: formData.hometown.split(',')[0]?.trim() || '',
-            country: formData.hometown.split(',')[1]?.trim() || '',
-          },
-        };
-        await axios.put('/api/profiles/me', profilePayload);
-        if (registrationPhotosComplete()) {
-          await uploadRegistrationPhotos(formData.photos);
-        }
-        await axios.put('/api/auth/me/registration-complete');
-        if (onComplete) onComplete();
+        await finalizeProfileAndComplete(age, birthDateIso);
+        await finishRegistration();
         return;
       }
 
-      // Only send profile data; backend always creates real users (userType: regular, isAdminCreated: false)
       const registrationData = {
         email: formData.email,
         password: formData.password,
@@ -441,39 +496,20 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
       const result = await register(registrationData);
 
       if (result.success) {
-        if (registrationPhotosComplete()) {
-          try {
-            await uploadRegistrationPhotos(formData.photos);
-          } catch (photoError) {
-            console.error('Photo upload error:', photoError);
-            setError('Account created but some photos failed to upload. Add them from your profile.');
-          }
-        }
-        setRegisteredUser({
-          firstName: formData.firstName,
-          email: formData.email,
-        });
-        setShowSuccessModal(true);
+        await finalizeProfileAndComplete(age, birthDateIso);
+        await finishRegistration();
       } else {
         setError(result.message || 'Registration failed');
       }
     } catch (err) {
-      setError(err.response?.data?.message || (completeProfileOnly ? 'Failed to save profile' : 'Registration failed'));
+      console.error('Registration submit error:', err);
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          (completeProfileOnly ? 'Failed to save profile' : 'Registration failed')
+      );
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleResendVerificationEmail = async () => {
-    try {
-      // Call API to resend verification email
-      await axios.post('/api/auth/resend-verification', {
-        email: formData.email,
-      });
-      return true;
-    } catch (error) {
-      console.error('Resend email error:', error);
-      throw error;
     }
   };
 
@@ -870,18 +906,6 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
 
   return (
     <>
-      {showSuccessModal && (
-        <RegistrationSuccessModal
-          user={registeredUser}
-          email={formData.email}
-          onClose={() => {
-            setShowSuccessModal(false);
-            navigate('/dashboard');
-          }}
-          onResendEmail={handleResendVerificationEmail}
-        />
-      )}
-      
       <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-white flex items-center justify-center p-4 relative overflow-hidden">
       {/* Cloud background effect */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -921,11 +945,7 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
                 }`}
                 disabled={loading || checkingEmail || (currentStep === 5 && !registrationPhotosComplete())}
               >
-                {loading
-                  ? (completeProfileOnly ? 'Saving...' : 'Registering...')
-                  : checkingEmail
-                    ? 'Checking...'
-                    : 'NEXT'}
+                {nextButtonLabel()}
               </button>
 
               <div className="flex space-x-2 mt-4">
@@ -940,7 +960,7 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
               </div>
             </div>
 
-            {currentStep > 0 && currentStep < 5 && !completeProfileOnly && (
+            {showSkipButton ? (
               <button
                 type="button"
                 onClick={handleSkip}
@@ -948,6 +968,10 @@ const RegistrationWizard = ({ completeProfileOnly = false, initialProfile = null
               >
                 Skip
               </button>
+            ) : (
+              <span className="text-blue-600 invisible select-none pointer-events-none" aria-hidden="true">
+                Skip
+              </span>
             )}
           </div>
         </div>

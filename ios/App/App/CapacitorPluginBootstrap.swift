@@ -4,6 +4,7 @@ import AppPlugin
 import SignInWithApple
 import SplashScreenPlugin
 import StatusBarPlugin
+import CameraPlugin
 
 /// Touch plugin types so they are linked and visible to `NSClassFromString` in
 /// `CapacitorBridge.registerPlugins()` (avoids **"SignInWithApple plugin is not implemented on ios"**).
@@ -13,5 +14,6 @@ enum CapacitorPluginBootstrap {
         _ = AppPlugin.self
         _ = SplashScreenPlugin.self
         _ = StatusBarPlugin.self
+        _ = CameraPlugin.self
     }
 }

@@ -5,7 +5,18 @@
   "server": {
     "androidScheme": "https",
     "iosScheme": "https",
-    "hostname": "localhost"
+    "hostname": "localhost",
+    "allowNavigation": [
+      "checkout.stripe.com",
+      "*.stripe.com",
+      "js.stripe.com",
+      "hooks.stripe.com",
+      "m.stripe.com",
+      "localhost",
+      "127.0.0.1",
+      "api.vantagedating.com",
+      "*.vantagedating.com"
+    ]
   },
   "ios": {
     "contentInset": "never",
